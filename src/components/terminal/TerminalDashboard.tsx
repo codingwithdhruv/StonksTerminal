@@ -54,6 +54,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [selectedStock, setSelectedStock] = useState<Gapper | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
 
   useEffect(() => {
@@ -171,7 +172,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
           </div>
           <div className="flex-1 overflow-auto">
             {/* Wide table with horizontal scroll */}
-            <div className="min-w-[1400px]">
+            <div className="min-w-[1800px]">
               <div className="sticky top-0 z-10 flex bg-muted/20 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground border-b border-border">
                 <div className="w-16 shrink-0">TICKER</div>
                 <div className="w-20 shrink-0 text-right">CHG %</div>
@@ -189,7 +190,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                 <div className="w-14 shrink-0 text-center">GRD</div>
                 <div className="w-20 shrink-0 text-right">REV G</div>
                 <div className="w-20 shrink-0 text-right">EPS G</div>
-                <div className="flex-1 shrink-0 px-2">CATALYST</div>
+                <div className="w-[500px] shrink-0 px-4">CATALYST / KEY DEVELOPMENTS</div>
               </div>
               <div className="flex flex-col divide-y divide-border/30">
                 {loading ? (
@@ -204,7 +205,14 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                   gappers.map((g, idx) => {
                     const isUp = parseFloat(g.changePct) >= 0;
                     return (
-                      <div key={idx} className="flex items-center px-3 py-1 hover:bg-muted/20 transition-colors text-[11px]">
+                      <div 
+                        key={idx} 
+                        className={cn(
+                          "flex items-center px-3 py-2 hover:bg-primary/10 transition-colors text-[11px] cursor-pointer border-l-2 border-transparent",
+                          selectedStock?.symbol === g.symbol && "bg-primary/10 border-primary"
+                        )}
+                        onClick={() => setSelectedStock(g)}
+                      >
                         <div className="w-16 shrink-0 font-bold text-slate-200 flex items-center gap-1">
                           {g.logo && (
                             <img src={g.logo} alt="" className="h-3.5 w-3.5 rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -243,7 +251,9 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                           g.epsGrowth === '--' ? "text-slate-500" :
                           g.epsGrowth?.startsWith('+') ? "text-emerald-400" : "text-rose-400"
                         )}>{g.epsGrowth || '--'}</div>
-                        <div className="w-[300px] max-w-[300px] shrink-0 px-2 text-slate-400 truncate" title={g.catalyst}>{g.catalyst || '--'}</div>
+                        <div className="w-[500px] shrink-0 px-4 text-slate-300 leading-normal line-clamp-2" title={g.catalyst}>
+                          {g.catalyst || '--'}
+                        </div>
                       </div>
                     );
                   })
@@ -389,6 +399,123 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                 </div>
               )}
             </ScrollArea>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Detail Side Panel */}
+      {selectedStock && (
+        <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[500px] bg-slate-950 border-l border-primary/30 shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col font-sans">
+          <div className="flex items-center justify-between p-4 border-b border-border bg-card/50">
+            <div className="flex items-center gap-3">
+              {selectedStock.logo && (
+                <img src={selectedStock.logo} alt="" className="h-8 w-8 rounded bg-white p-0.5" />
+              )}
+              <div>
+                <h2 className="text-lg font-bold text-primary leading-tight">{selectedStock.symbol}</h2>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">{selectedStock.industry} • {selectedStock.category}</p>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedStock(null)} className="hover:bg-rose-500/10 hover:text-rose-500">
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <ScrollArea className="flex-1">
+            <div className="p-6 space-y-8">
+              {/* Key Catalyst Section */}
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-primary font-bold text-sm uppercase tracking-tighter">
+                  <BrainCircuit className="h-4 w-4" />
+                  Primary Catalyst & Intelligence
+                </div>
+                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">
+                  {selectedStock.catalyst || 'No specific catalyst detected for this period.'}
+                </div>
+              </section>
+
+              {/* Fundamental Grid */}
+              <section className="space-y-4">
+                <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">Market Intelligence</h3>
+                <div className="grid grid-cols-2 gap-px bg-border/50 border border-border rounded-lg overflow-hidden">
+                  {[
+                    { label: 'Market Cap', value: selectedStock.mktCap },
+                    { label: 'Float', value: selectedStock.float },
+                    { label: 'Short Interest', value: selectedStock.shortPct },
+                    { label: 'Rel. Volume', value: formatVolume(selectedStock.volume) },
+                    { label: 'Revenue Growth', value: selectedStock.revGrowth, color: selectedStock.revGrowth?.startsWith('+') ? 'text-emerald-400' : 'text-rose-400' },
+                    { label: 'EPS Growth', value: selectedStock.epsGrowth, color: selectedStock.epsGrowth?.startsWith('+') ? 'text-emerald-400' : 'text-rose-400' },
+                    { label: 'Industry', value: selectedStock.industry },
+                    { label: 'Theme', value: selectedStock.theme },
+                  ].map((item, i) => (
+                    <div key={i} className="bg-slate-900/50 p-3">
+                      <p className="text-[9px] uppercase text-muted-foreground mb-1">{item.label}</p>
+                      <p className={cn("text-sm font-bold", item.color || "text-slate-200")}>{item.value || '--'}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Performance Card */}
+              <section className="bg-gradient-to-br from-card to-slate-900 p-4 rounded-lg border border-border shadow-inner">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-[10px] uppercase text-muted-foreground mb-1">Current Price</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-bold text-slate-100">${selectedStock.price.toFixed(2)}</span>
+                      <span className={cn("text-sm font-bold", parseFloat(selectedStock.changePct) >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                        {parseFloat(selectedStock.changePct) >= 0 ? '▲' : '▼'} {selectedStock.changePct}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase text-muted-foreground mb-1">Grade</p>
+                    <Badge className={cn("text-lg font-black px-3", 
+                      selectedStock.grade === 'A' ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50" :
+                      selectedStock.grade === 'B' ? "bg-blue-500/20 text-blue-400 border-blue-500/50" :
+                      "bg-amber-500/20 text-amber-400 border-amber-500/50"
+                    )}>
+                      {selectedStock.grade}
+                    </Badge>
+                  </div>
+                </div>
+              </section>
+
+              {/* Ticker Specific News */}
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">Live Mentions</h3>
+                  <Badge variant="outline" className="text-[9px] border-primary/20 text-primary">REAL-TIME</Badge>
+                </div>
+                <div className="space-y-3">
+                  {filteredNews
+                    .filter(n => n.symbols.includes(selectedStock.symbol))
+                    .slice(0, 5)
+                    .map((item, i) => (
+                      <a key={i} href={item.url} target="_blank" rel="noreferrer" className="block p-3 rounded border border-border/50 hover:border-primary/50 bg-muted/5 transition-all group">
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-[9px] text-muted-foreground">{item.source} • {new Date(item.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-xs font-medium text-slate-300 group-hover:text-primary transition-colors line-clamp-2">{item.headline}</p>
+                      </a>
+                    ))}
+                  {filteredNews.filter(n => n.symbols.includes(selectedStock.symbol)).length === 0 && (
+                    <div className="text-center py-8 border border-dashed border-border rounded-lg">
+                      <p className="text-xs text-muted-foreground">No additional news found for {selectedStock.symbol}</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          </ScrollArea>
+
+          <div className="p-4 border-t border-border bg-card/30 flex gap-2">
+            <Button className="flex-1 bg-primary text-primary-foreground font-bold" onClick={() => window.open(`https://seekingalpha.com/symbol/${selectedStock.symbol}`, '_blank')}>
+              View on SeekingAlpha
+            </Button>
+            <Button variant="outline" className="flex-1 border-primary/20 hover:bg-primary/10" onClick={() => window.open(`https://finance.yahoo.com/quote/${selectedStock.symbol}`, '_blank')}>
+              Yahoo Finance
+            </Button>
           </div>
         </div>
       )}
