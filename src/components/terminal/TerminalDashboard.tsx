@@ -7,7 +7,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Activity, Newspaper, BrainCircuit, Filter, Clock, Globe, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getCategoryMatchTerms } from '@/lib/news';
 
 interface Gapper {
   symbol: string;
@@ -59,22 +58,22 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
     document.documentElement.classList.add('dark');
     const fetchData = async () => {
       try {
+        // Use sector-specific endpoints for category pages, global for overview
+        const marketUrl = categorySlug
+          ? `/api/market/sector?sector=${categorySlug}`
+          : '/api/market';
+        const newsUrl = categorySlug
+          ? `/api/news/sector?sector=${categorySlug}`
+          : '/api/news/all';
+
         const [marketRes, newsRes] = await Promise.all([
-          fetch('/api/market'),
-          fetch('/api/news/all')
+          fetch(marketUrl),
+          fetch(newsUrl)
         ]);
         const marketData = await marketRes.json();
         const incomingNewsData = await newsRes.json();
 
-        let fetchedGappers: Gapper[] = marketData.data || [];
-        if (categorySlug) {
-          const terms = getCategoryMatchTerms(categorySlug);
-          fetchedGappers = fetchedGappers.filter(g => {
-            const text = `${g.theme} ${g.industry} ${g.category} ${g.symbol}`.toLowerCase();
-            return terms.some(t => text.includes(t));
-          });
-        }
-        setGappers(fetchedGappers);
+        setGappers(marketData.data || []);
 
         const incomingNews: NewsItem[] = incomingNewsData.data || [];
         setNews(prevNews => {
@@ -122,15 +121,6 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
   };
 
   let filteredNews = [...news];
-  if (categorySlug) {
-    const terms = getCategoryMatchTerms(categorySlug);
-    filteredNews = filteredNews.filter(n => {
-      const text = `${n.category} ${n.headline} ${n.summary}`.toLowerCase();
-      const matchesTerm = terms.some(t => text.includes(t));
-      const matchesSym = n.symbols?.some(sym => gappers.some(g => g.symbol === sym));
-      return matchesTerm || matchesSym;
-    });
-  }
   if (sourceFilter !== 'all') {
     filteredNews = filteredNews.filter(n => n.source?.toLowerCase().includes(sourceFilter.toLowerCase()));
   }
