@@ -84,11 +84,37 @@ function Sparkline({ data, isUp }: { data: number[]; isUp: boolean }) {
   );
 }
 
+function SparklineLarge({ data, isUp }: { data: number[]; isUp: boolean }) {
+  if (!data || data.length < 2) return null;
+  const W = 440, H = 60;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * W;
+    const y = H - ((v - min) / range) * (H - 6) - 3;
+    return `${x},${y}`;
+  });
+  const color = isUp ? '#10b981' : '#f43f5e';
+  const fillColor = isUp ? 'rgba(16,185,129,0.08)' : 'rgba(244,63,94,0.08)';
+  const fillPts = `0,${H} ${pts.join(' ')} ${W},${H}`;
+  return (
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <polygon points={fillPts} fill={fillColor} />
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function TradingViewWidget({ symbol }: { symbol: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!ref.current) return;
     ref.current.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'tradingview-widget-container__widget';
+    container.style.height = '100%';
+    ref.current.appendChild(container);
     const script = document.createElement('script');
     script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
     script.async = true;
@@ -101,16 +127,14 @@ function TradingViewWidget({ symbol }: { symbol: string }) {
       style: '1',
       locale: 'en',
       hide_top_toolbar: false,
-      hide_legend: true,
+      hide_legend: false,
       allow_symbol_change: false,
       support_host: 'https://www.tradingview.com',
     });
     ref.current.appendChild(script);
   }, [symbol]);
   return (
-    <div className="tradingview-widget-container" style={{ height: '300px' }} ref={ref}>
-      <div className="tradingview-widget-container__widget" style={{ height: '100%' }} />
-    </div>
+    <div className="tradingview-widget-container" style={{ height: '420px' }} ref={ref} />
   );
 }
 
@@ -226,6 +250,18 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
     return vol.toString();
   };
 
+  const decodeHtml = (text: string): string => {
+    if (!text) return text;
+    return text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;|&#34;/g, '"')
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
+  };
+
   // Filtered gappers
   const filteredGappers = useMemo(() => {
     return gappers.filter(g => {
@@ -290,9 +326,9 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
       <header className="mb-2 sm:mb-3 flex flex-col sm:flex-row items-start sm:items-center justify-between pb-2 gap-2 border-b border-border/60">
         <div>
           <h1 className="text-sm sm:text-lg font-black uppercase tracking-widest text-primary">
-            {categorySlug ? `${categorySlug} Dashboard` : 'Global Overview'}
+            {categorySlug ? `${categorySlug.charAt(0).toUpperCase() + categorySlug.slice(1)} Dashboard` : 'Global Overview'}
           </h1>
-          <p className="text-[10px] text-muted-foreground mt-0.5 hidden sm:block">
+          <p className="text-[10px] text-muted-foreground mt-1.5 hidden sm:block tracking-wide">
             {filteredGappers.length} movers · {filteredNews.length} signals · Auto-refresh 60s
           </p>
         </div>
@@ -390,7 +426,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
               {/* Header row */}
               <div className="sticky top-0 z-20 flex bg-slate-900/95 border-b border-border/60 text-[10px] font-bold text-slate-300 uppercase tracking-wider">
                 {/* Sticky ticker header */}
-                <div className="sticky left-0 z-30 bg-slate-900 flex items-center px-3 py-2 w-28 shrink-0 border-r border-border/30">
+                <div className="sticky left-0 z-30 bg-slate-950 flex items-center px-3 py-2 w-28 shrink-0 border-r border-white/[0.06] shadow-[2px_0_6px_rgba(0,0,0,0.5)]">
                   <Star className="h-3 w-3 mr-1.5 text-muted-foreground/40" /> TICKER
                 </div>
                 {isColVisible('premkt') && <div className="w-24 shrink-0 text-right px-2 py-2">PREMKT %</div>}
@@ -436,18 +472,19 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                       <div
                         key={g.symbol}
                         className={cn(
-                          'flex items-center text-[11px] cursor-pointer border-l-2 border-transparent transition-colors',
-                          idx % 2 === 0 ? 'bg-transparent' : 'bg-muted/5',
-                          'hover:bg-primary/8 hover:border-primary/50',
+                          'flex items-center text-[11px] cursor-pointer border-l-2 border-transparent transition-colors group/row',
+                          idx % 2 === 0 ? 'bg-transparent' : 'bg-white/[0.025]',
+                          'hover:bg-primary/10 hover:border-primary/60',
                           selectedStock?.symbol === g.symbol && 'bg-primary/12 border-primary'
                         )}
                         onClick={() => setSelectedStock(g)}
                       >
-                        {/* Sticky TICKER cell */}
+                        {/* Sticky TICKER cell — same bg as row, subtle right separator */}
                         <div className={cn(
-                          'sticky left-0 z-10 flex items-center gap-1.5 px-3 py-2.5 w-28 shrink-0 border-r border-border/20 font-bold text-slate-100',
-                          idx % 2 === 0 ? 'bg-slate-950' : 'bg-slate-950/90',
-                          selectedStock?.symbol === g.symbol && 'bg-primary/10'
+                          'sticky left-0 z-10 flex items-center gap-1.5 px-3 py-2.5 w-28 shrink-0 font-bold text-slate-100',
+                          'border-r border-white/[0.06] shadow-[2px_0_6px_rgba(0,0,0,0.5)]',
+                          idx % 2 === 0 ? 'bg-[#080810]' : 'bg-[#0c0c18]',
+                          selectedStock?.symbol === g.symbol && '!bg-primary/15'
                         )}>
                           <button
                             onClick={e => { e.stopPropagation(); toggleWatchlist(g.symbol); }}
@@ -619,38 +656,30 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                       </div>
 
                       <div className="flex flex-col gap-1 flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
-                            <Globe className="h-3 w-3 hidden sm:block" />
+                        {/* Meta row: source + time + badges all inline */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            <Globe className="h-3 w-3 hidden sm:block shrink-0" />
                             {item.source || 'News'} · {formatNewsTime(item.createdAt)}
                           </span>
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {/* Sentiment badge */}
-                            <Badge variant="outline" className={cn('text-[9px] h-4 px-1.5 rounded-sm font-semibold', sentimentColor(sentiment))}>
-                              {sentiment === 'bullish' ? '▲ Bullish' : sentiment === 'bearish' ? '▼ Bearish' : '— Neutral'}
+                          <Badge variant="outline" className={cn('text-[9px] h-4 px-1.5 rounded-sm font-semibold', sentimentColor(sentiment))}>
+                            {sentiment === 'bullish' ? '▲ Bullish' : sentiment === 'bearish' ? '▼ Bearish' : '— Neutral'}
+                          </Badge>
+                          {item.symbols && item.symbols.length > 0 && item.symbols.slice(0, 3).map(sym => (
+                            <Badge key={sym} variant="outline" className="text-[9px] h-4 px-1 rounded-sm border-muted-foreground/30 text-muted-foreground">
+                              {sym}
                             </Badge>
-                            {/* Ticker badges */}
-                            {item.symbols && item.symbols.length > 0 && (
-                              <div className="flex gap-0.5">
-                                {item.symbols.slice(0, 3).map(sym => (
-                                  <Badge key={sym} variant="outline" className="text-[9px] h-4 px-1 rounded-sm border-muted-foreground/30">
-                                    {sym}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                            {/* Category badge */}
-                            <Badge variant="outline" className={cn('text-[9px] h-4 px-1 rounded-sm', item.categoryClass)}>
-                              {item.category}
-                            </Badge>
-                          </div>
+                          ))}
+                          <Badge variant="outline" className={cn('text-[9px] h-4 px-1 rounded-sm', item.categoryClass)}>
+                            {item.category}
+                          </Badge>
                         </div>
                         <div className="font-semibold text-slate-200 group-hover:text-primary transition-colors text-xs sm:text-sm leading-snug">
-                          {item.headline}
+                          {decodeHtml(item.headline)}
                         </div>
                         {item.summary && (
-                          <div className="text-[10px] sm:text-xs text-slate-400 line-clamp-2 mt-0.5 leading-relaxed">
-                            {item.summary}
+                          <div className="text-[10px] sm:text-xs text-slate-300/80 line-clamp-2 mt-0.5 leading-relaxed">
+                            {decodeHtml(item.summary)}
                           </div>
                         )}
                       </div>
@@ -791,14 +820,14 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                 </div>
               </section>
 
-              {/* Sparkline */}
+              {/* Sparkline — large panel version */}
               {selectedStock.sparkline && selectedStock.sparkline.length >= 2 && (
                 <section>
                   <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                    <TrendingUp className="inline h-3 w-3 mr-1" /> 7-Day Price Trend
+                    <TrendingUp className="inline h-3 w-3 mr-1" /> 10-Day Price Trend
                   </h3>
-                  <div className="bg-card/50 border border-border/30 rounded-lg p-3 flex items-center justify-center">
-                    <Sparkline data={selectedStock.sparkline} isUp={parseFloat(selectedStock.changePct) >= 0} />
+                  <div className="bg-card/50 border border-border/30 rounded-lg p-3">
+                    <SparklineLarge data={selectedStock.sparkline} isUp={parseFloat(selectedStock.changePct) >= 0} />
                   </div>
                 </section>
               )}

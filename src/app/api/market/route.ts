@@ -33,19 +33,21 @@ interface YFPreMarket {
   premktVol: number;
 }
 
-/** Fetch 7-day closing prices per symbol for sparkline charts */
+/** Fetch 10-day closing prices per symbol for sparkline charts */
 async function fetchSparklines(symbols: string[]): Promise<Record<string, number[]>> {
   const result: Record<string, number[]> = {};
   if (symbols.length === 0) return result;
-  const start = new Date(Date.now() - 10 * 86400000).toISOString().split('T')[0];
+  const start = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
+  // limit must be generous: applies GLOBALLY across all symbols (not per-symbol)
+  const limit = Math.min(symbols.length * 15, 2000);
   try {
     const res = await axios.get(
-      `${ALPACA_DATA_URL}/v2/stocks/bars?symbols=${symbols.join(',')}&timeframe=1Day&start=${start}&feed=iex&limit=10`,
-      { headers: alpacaHeaders, timeout: 10000 }
+      `${ALPACA_DATA_URL}/v2/stocks/bars?symbols=${symbols.join(',')}&timeframe=1Day&start=${start}&limit=${limit}`,
+      { headers: alpacaHeaders, timeout: 15000 }
     );
     const bars: Record<string, Array<{ c: number }>> = res.data?.bars || {};
     for (const [sym, symBars] of Object.entries(bars)) {
-      result[sym] = symBars.map(b => b.c);
+      result[sym] = symBars.slice(-10).map(b => b.c);
     }
   } catch (e) {
     console.error('Sparkline fetch error:', (e as Error).message);
