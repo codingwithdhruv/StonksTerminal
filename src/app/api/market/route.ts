@@ -165,13 +165,12 @@ async function fetchCatalysts(symbols: string[]): Promise<Record<string, string>
   const result: Record<string, string> = {};
   if (!FINNHUB_API_KEY) return result;
 
-  // Fetch for ALL non-ETF symbols, in batches of 15 to respect rate limits
-  const stockSymbols = symbols.filter(s => !KNOWN_ETFS.has(s));
+  // Fetch news headlines as live catalysts
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
-  for (let i = 0; i < stockSymbols.length; i += 15) {
-    const batch = stockSymbols.slice(i, i + 15);
+  for (let i = 0; i < symbols.length; i += 15) {
+    const batch = symbols.slice(i, i + 15);
     const promises = batch.map(async (sym) => {
       try {
         const res = await axios.get(
@@ -194,7 +193,7 @@ async function fetchCatalysts(symbols: string[]): Promise<Record<string, string>
     }
 
     // Rate limit delay between batches
-    if (i + 15 < stockSymbols.length) {
+    if (i + 15 < symbols.length) {
       await new Promise(r => setTimeout(r, 300));
     }
   }
@@ -282,8 +281,8 @@ export async function GET() {
     // 4. Fetch SA metrics (SI%, rev growth, EPS growth, logos, marketCap fallback)
     const { metrics: saMetrics } = await fetchSAMetrics(nonEtfSymbols);
 
-    // 5. Fetch live catalysts for ALL stocks
-    const catalysts = await fetchCatalysts(symbols);
+    // 5. Fetch live catalysts for non-ETF stocks
+    const catalysts = await fetchCatalysts(nonEtfSymbols);
 
     // 6. Build gappers array
     const gappers = symbols.map((sym) => {
