@@ -1,0 +1,64 @@
+import { NextResponse } from 'next/server';
+
+export const revalidate = 60; // Cache for 60 seconds
+
+interface FinnhubNews {
+  id: number;
+  headline: string;
+  summary: string;
+  source: string;
+  url: string;
+  datetime: number;
+  related?: string;
+}
+
+export async function GET() {
+  const apiKey = process.env.FINNHUB_API_KEY;
+
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: 'Finnhub API key not configured' },
+      { status: 500 }
+    );
+  }
+
+  try {
+    // Fetch a large number of general news items from Finnhub
+    const response = await fetch(
+      `https://finnhub.io/api/v1/news?category=general&token=${apiKey}`,
+      { 
+        next: { revalidate: 60 } // Revalidate every 60 seconds
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Finnhub API Error: ${response.status} - ${errorText}`);
+      throw new Error(`Finnhub API responded with status: ${response.status}`);
+    }
+
+    const data: FinnhubNews[] = await response.json();
+
+    // Map Finnhub response to our common NewsItem interface
+    // Finnhub response shape: 
+    // { category, datetime (seconds), headline, id, image, related (comma-separated), source, summary, url }
+    const formattedNews = data.slice(0, 100).map((item) => ({
+      id: `finnhub-${item.id}`,
+      headline: item.headline,
+      summary: item.summary,
+      source: item.source || 'Finnhub',
+      url: item.url,
+      // Convert UNIX timestamp in seconds to ISO string
+      createdAt: new Date(item.datetime * 1000).toISOString(),
+      category: 'Pending AI', // Will be categorized by NIM AI later
+      symbols: item.related ? item.related.split(',') : [],
+    }));
+
+    return NextResponse.json({ data: formattedNews });
+  } catch (error: unknown) {
+    console.error('Error fetching Finnhub news:', error);
+    
+    // In case of error, return a fallback or empty array to avoid breaking UI
+    return NextResponse.json({ data: [] }, { status: 500 });
+  }
+}
