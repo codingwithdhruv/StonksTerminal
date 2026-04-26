@@ -28,6 +28,71 @@ interface AlpacaSnapshot {
   prevDailyBar?: { c: number };
 }
 
+interface YFPreMarket {
+  premktChgPct: string;
+  premktVol: number;
+}
+
+/** Fetch 7-day closing prices per symbol for sparkline charts */
+async function fetchSparklines(symbols: string[]): Promise<Record<string, number[]>> {
+  const result: Record<string, number[]> = {};
+  if (symbols.length === 0) return result;
+  const start = new Date(Date.now() - 10 * 86400000).toISOString().split('T')[0];
+  try {
+    const res = await axios.get(
+      `${ALPACA_DATA_URL}/v2/stocks/bars?symbols=${symbols.join(',')}&timeframe=1Day&start=${start}&feed=iex&limit=10`,
+      { headers: alpacaHeaders, timeout: 10000 }
+    );
+    const bars: Record<string, Array<{ c: number }>> = res.data?.bars || {};
+    for (const [sym, symBars] of Object.entries(bars)) {
+      result[sym] = symBars.map(b => b.c);
+    }
+  } catch (e) {
+    console.error('Sparkline fetch error:', (e as Error).message);
+  }
+  return result;
+}
+
+/** Fetch pre-market % change and volume from Yahoo Finance market/v2/get-quotes */
+async function fetchPreMarketData(symbols: string[]): Promise<Record<string, YFPreMarket>> {
+  const result: Record<string, YFPreMarket> = {};
+  if (!RAPIDAPI_KEY || symbols.length === 0) return result;
+
+  for (let i = 0; i < symbols.length; i += 30) {
+    const batch = symbols.slice(i, i + 30);
+    try {
+      const res = await axios.get(
+        `https://apidojo-yahoo-finance-v1.p.rapidapi.com/market/v2/get-quotes?region=US&symbols=${batch.join(',')}`,
+        {
+          headers: {
+            'x-rapidapi-key': RAPIDAPI_KEY,
+            'x-rapidapi-host': 'apidojo-yahoo-finance-v1.p.rapidapi.com',
+          },
+          timeout: 10000,
+        }
+      );
+      const quotes: Array<{
+        symbol?: string;
+        preMarketChangePercent?: number | null;
+        preMarketVolume?: number | null;
+      }> = res.data?.quoteResponse?.result || [];
+
+      for (const q of quotes) {
+        if (!q.symbol) continue;
+        const pct = q.preMarketChangePercent;
+        result[q.symbol] = {
+          premktChgPct: pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--',
+          premktVol: q.preMarketVolume ?? 0,
+        };
+      }
+    } catch (e) {
+      console.error('YF pre-market error:', (e as Error).message);
+    }
+    if (i + 30 < symbols.length) await new Promise(r => setTimeout(r, 200));
+  }
+  return result;
+}
+
 // Dynamic ETF cache
 let cachedEtfs: Set<string> = new Set();
 let lastEtfFetch = 0;
@@ -284,11 +349,18 @@ export async function GET() {
     // 5. Fetch live catalysts for non-ETF stocks
     const catalysts = await fetchCatalysts(nonEtfSymbols);
 
-    // 6. Build gappers array
+    // 6. Fetch pre-market data from Yahoo Finance for all symbols
+    const preMarketData = await fetchPreMarketData(symbols);
+
+    // 7. Fetch sparkline data (7-day closing prices) for all symbols
+    const sparklines = await fetchSparklines(symbols);
+
+    // 8. Build gappers array
     const gappers = symbols.map((sym) => {
       const snap = snapshots[sym];
       const prof = profiles[sym] || null;
       const sa = saMetrics[sym] || {};
+      const pm = preMarketData[sym] || { premktChgPct: '--', premktVol: 0 };
       const isEtf = etfSymbols.has(sym) || prof?.finnhubIndustry?.toLowerCase().includes('etf');
       const vol = volumeMap.get(sym) || { volume: 0, trade_count: 0 };
 
@@ -343,6 +415,9 @@ export async function GET() {
         price,
         prevClose,
         changePct: changePct.toFixed(2),
+        premktChgPct: pm.premktChgPct,
+        premktVol: pm.premktVol,
+        sparkline: sparklines[sym] || [],
         grade,
         mktCap: mktCapDisplay,
         capSize,

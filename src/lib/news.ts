@@ -95,23 +95,46 @@ export function getCategoryMatchTerms(slug: string): string[] {
 }
 
 /**
- * Normalizes a date string or number to an ISO string, 
- * handling cases where IST (UTC+5.5) might have been misinterpreted as UTC.
+ * Normalizes a date string or unix-ms number to an ISO string.
+ * All sources (Alpaca, Finnhub, SA, Yahoo Finance) return proper UTC or
+ * timezone-aware timestamps — no manual IST offset correction is applied.
  */
 export function normalizeTimestamp(input: string | number): { iso: string; unix: number } {
-  const dateObj = new Date(input);
-  let timestamp = dateObj.getTime();
-  const now = Date.now();
-
-  // If the timestamp is in the future by more than 3 hours, 
-  // it's highly likely it was a local IST time treated as UTC.
-  // We subtract 5.5 hours to bring it back to UTC.
-  if (timestamp > now + 3 * 3600000) {
-    timestamp -= 5.5 * 3600000;
-  }
-
+  const timestamp = typeof input === 'number' ? input : new Date(input).getTime();
+  const safe = isNaN(timestamp) || timestamp <= 0 ? Date.now() : timestamp;
   return {
-    iso: new Date(timestamp).toISOString(),
-    unix: timestamp
+    iso: new Date(safe).toISOString(),
+    unix: safe,
   };
+}
+
+/**
+ * Format a news timestamp in IST. Shows time only if today, otherwise
+ * shows "Jan 15 09:30 AM" so older articles are clearly dated.
+ */
+export function formatNewsTime(isoString: string): string {
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+  const ist = { timeZone: 'Asia/Kolkata' } as const;
+
+  // Get today's date in IST
+  const nowIST = new Intl.DateTimeFormat('en-IN', { ...ist, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const articleIST = new Intl.DateTimeFormat('en-IN', { ...ist, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+
+  const time = date.toLocaleTimeString('en-IN', { ...ist, hour: '2-digit', minute: '2-digit', hour12: true });
+
+  if (nowIST === articleIST) return time;
+
+  const dayMonth = date.toLocaleDateString('en-IN', { ...ist, month: 'short', day: 'numeric' });
+  return `${dayMonth} ${time}`;
+}
+
+/** Keyword-based sentiment analysis for news headlines. */
+export function getSentiment(headline: string, summary = ''): 'bullish' | 'bearish' | 'neutral' {
+  const text = `${headline} ${summary}`.toLowerCase();
+  const bullish = (text.match(/surges?|soars?|jumps?|rallies|rally|rises?|gains?|beats?|exceeds?|record high|upgrade|outperform|bullish|positive|strong|growth|profit|breakthrough|boost|momentum|win|awarded|launch/g) || []).length;
+  const bearish = (text.match(/drops?|falls?|plunges?|crashes?|declines?|misses?|shortfall|downgrade|underperform|bearish|negative|weak|loss|warning|concern|risk|fear|pressure|cut|suspend|halt|recall|lawsuit|fine|penalty/g) || []).length;
+  if (bullish > bearish) return 'bullish';
+  if (bearish > bullish) return 'bearish';
+  return 'neutral';
 }

@@ -1,0 +1,43 @@
+{
+  "mcpServers": {
+    "seeking_alpha": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.rapidapi.com",
+        "--header",
+        "x-api-host: seeking-alpha.p.rapidapi.com",
+        "--header",
+        "x-api-key: 1aca19ca6cmsh593e3bf1293c637p1a002ejsn3c41af692a23"
+      ]
+    },
+    "yahoo_finance": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.rapidapi.com",
+        "--header",
+        "x-api-host: apidojo-yahoo-finance-v1.p.rapidapi.com",
+        "--header",
+        "x-api-key: 1aca19ca6cmsh593e3bf1293c637p1a002ejsn3c41af692a23"
+      ]
+    },
+    "cnbc_news": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.rapidapi.com",
+        "--header",
+        "x-api-host: cnbc.p.rapidapi.com",
+        "--header",
+        "x-api-key: 1aca19ca6cmsh593e3bf1293c637p1a002ejsn3c41af692a23"
+      ]
+    },
+    "financial-datasets": {
+      "url": "https://mcp.financialdatasets.ai/"
+    }
+  }
+}
