@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
+
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
 const ALPACA_DATA_URL = process.env.ALPACA_DATA_URL || 'https://data.alpaca.markets';
@@ -9,6 +11,12 @@ const headers = {
   'APCA-API-KEY-ID': ALPACA_API_KEY_ID,
   'APCA-API-SECRET-KEY': ALPACA_API_SECRET_KEY,
 };
+
+interface FinnhubProfile {
+  marketCapitalization?: number;
+  shareOutstanding?: number;
+  finnhubIndustry?: string;
+}
 
 interface AlpacaMostActive {
   symbol: string;
@@ -38,10 +46,28 @@ export async function GET() {
     const snapshotRes = await axios.get(`${ALPACA_DATA_URL}/v2/stocks/snapshots?symbols=${symbols}&feed=iex`, { headers });
     const snapshots: Record<string, AlpacaSnapshot> = snapshotRes.data;
 
-    // 3. Process the data
+    // 3. Fetch real company profiles from Finnhub (limit to top 15 to stay within rate limits)
+    const profilePromises = mostActives.slice(0, 15).map(async (s) => {
+      if (!FINNHUB_API_KEY) return { symbol: s.symbol, profile: null };
+      try {
+        const res = await axios.get(`https://finnhub.io/api/v1/stock/profile2?symbol=${s.symbol}&token=${FINNHUB_API_KEY}`);
+        return { symbol: s.symbol, profile: res.data };
+      } catch {
+        return { symbol: s.symbol, profile: null };
+      }
+    });
+
+    const profilesArray = await Promise.all(profilePromises);
+    const profiles = profilesArray.reduce((acc, curr) => {
+      acc[curr.symbol] = curr.profile;
+      return acc;
+    }, {} as Record<string, FinnhubProfile | null>);
+
+    // 4. Process the data
     const gappers = mostActives.map((s) => {
       const sym = s.symbol;
       const snap = snapshots[sym];
+      const prof = profiles[sym] || {};
       
       let price = 0;
       let prevClose = 0;
@@ -61,25 +87,20 @@ export async function GET() {
       else if (Math.abs(changePct) > 5 && s.volume > 100000) grade = 'B';
       else if (Math.abs(changePct) > 2) grade = 'C';
 
-      // Deterministic advanced fields
-      const charCode = sym.charCodeAt(0) + (sym.charCodeAt(1) || 0);
-      const capSizes = ['Micro', 'Small', 'Mid', 'Large', 'Mega'];
-      const capSize = capSizes[charCode % capSizes.length];
-      const mktCap = ((charCode * 1.5) % 100).toFixed(2) + (charCode % 2 === 0 ? 'B' : 'M');
-      const float = ((charCode * 3.2) % 500).toFixed(1) + 'M';
-      const shortPct = ((charCode * 0.7) % 25).toFixed(2) + '%';
+      // Advanced fields (using Finnhub where possible, fallback to null/unknown)
+      const mktCap = prof.marketCapitalization ? (prof.marketCapitalization / 1000).toFixed(2) + 'B' : 'N/A';
+      const capSize = prof.marketCapitalization ? (prof.marketCapitalization > 10000 ? 'Mega' : prof.marketCapitalization > 2000 ? 'Mid' : 'Small') : 'N/A';
+      const float = prof.shareOutstanding ? prof.shareOutstanding.toFixed(1) + 'M' : 'N/A';
       
-      const themesList = ['Spacecraft Design', 'Digital Identity', 'Apparel & Intimates', 'Biotech', 'Enterprise SaaS', 'Semiconductors', 'Clean Energy', 'Fintech', 'Cybersecurity', 'Electric Vehicles'];
-      const theme = themesList[charCode % themesList.length];
+      // We map Finnhub's generic industry to our themes if possible
+      const industry = prof.finnhubIndustry || 'N/A';
+      const theme = prof.finnhubIndustry || 'N/A'; // For simplicity, mirroring industry to theme if not AI classified
       
-      const industries = ['Aerospace & Defense', 'Software', 'Retail', 'Healthcare', 'Technology', 'Semiconductors', 'Energy', 'Financials'];
-      const industry = industries[charCode % industries.length];
-      
-      const categories = ['Earnings', 'FDA', 'Partnerships', 'Offerings', 'Orders', 'Themes', 'General'];
-      const category = categories[charCode % categories.length];
-      
-      const revGrowth = (charCode % 2 === 0 ? '+' : '-') + (charCode % 50) + '%';
-      const epsGrowth = charCode % 3 === 0 ? 'Improving' : (charCode % 2 === 0 ? 'Turning Profitable' : 'N/A');
+      const charCode = sym.charCodeAt(0) + (sym.charCodeAt(1) || 0); // Kept solely for random catalyst fallback
+      const shortPct = ((charCode * 0.7) % 25).toFixed(2) + '%'; // Keeping mock for short float as it requires premium APIs
+      const category = 'General';
+      const revGrowth = 'N/A';
+      const epsGrowth = 'N/A';
       
       const catalystTemplates = [
         `Reported record Q4 and FY 2025 earnings. Revenue $${(charCode*1.2).toFixed(1)}M (beat est.), EPS $0.0${charCode%9} (beat). Strong FY2026 guidance.`,

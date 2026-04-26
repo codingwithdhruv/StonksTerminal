@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Sidebar } from "@/components/layout/Sidebar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pre-Market Intelligence Dashboard",
-  description: "Real-time gapper detection and AI-powered market catalyst analysis.",
+  title: "StonksTerminal Pro",
+  description: "Bloomberg-style end-to-end pre-market intelligence terminal.",
 };
 
 export default function RootLayout({
@@ -25,9 +26,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex h-screen overflow-hidden bg-background font-sans text-foreground">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto">{children}</main>
+      </body>
     </html>
   );
 }
