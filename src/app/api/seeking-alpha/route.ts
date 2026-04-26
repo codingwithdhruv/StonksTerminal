@@ -1,101 +1,147 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
+import { categorizeNews, getCategoryLabel } from '@/lib/news';
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 
-import { categorizeNews, getCategoryLabel } from '@/lib/news';
-
-interface SAArticle {
+interface SANewsItem {
   id: string;
+  type?: string;
   attributes?: {
-    title: string;
+    title?: string;
+    publishOn?: string;
+    gettyImageUrl?: string;
   };
   links?: {
-    self: string;
+    self?: string;
+  };
+  relationships?: {
+    primaryTickers?: {
+      data?: Array<{ id: string; type: string }>;
+    };
+    secondaryTickers?: {
+      data?: Array<{ id: string; type: string }>;
+    };
+  };
+}
+
+interface SAIncludedTicker {
+  id: string;
+  type: string;
+  attributes?: {
+    slug?: string;
+    name?: string;
+    company?: string;
   };
 }
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const size = searchParams.get('size') || '10';
+  const size = searchParams.get('size') || '40';
+
+  if (!RAPIDAPI_KEY) {
+    console.error('RAPIDAPI_KEY is not set');
+    return NextResponse.json({ data: [] });
+  }
 
   try {
-    const url = `https://seeking-alpha.p.rapidapi.com/news/v2/list-trending?size=${size}`;
-    
-    const newsRes = await axios.get(url, { 
-      headers: {
-        'x-api-key': RAPIDAPI_KEY,
-        'x-api-host': 'seeking-alpha.p.rapidapi.com'
+    // Fetch trending news (up to 40 items)
+    const trendingRes = await axios.get(
+      `https://seeking-alpha.p.rapidapi.com/news/v2/list-trending?size=${size}`,
+      {
+        headers: {
+          'x-rapidapi-key': RAPIDAPI_KEY,
+          'x-rapidapi-host': 'seeking-alpha.p.rapidapi.com',
+        },
+        timeout: 10000,
       }
-    });
+    );
 
-    const articles: SAArticle[] = newsRes.data.data || [];
+    const articles: SANewsItem[] = trendingRes.data?.data || [];
+    const included: SAIncludedTicker[] = trendingRes.data?.included || [];
 
-    const categorizedNews = articles.map((article) => {
+    // Build a ticker ID -> symbol map from included data
+    const tickerMap: Record<string, string> = {};
+    for (const item of included) {
+      if (item.type === 'ticker' && item.attributes?.slug) {
+        tickerMap[item.id] = item.attributes.slug.toUpperCase();
+      }
+    }
+
+    // Also fetch market-news::all for more coverage
+    let moreArticles: SANewsItem[] = [];
+    let moreIncluded: SAIncludedTicker[] = [];
+    try {
+      const allNewsRes = await axios.get(
+        `https://seeking-alpha.p.rapidapi.com/news/v2/list?category=market-news::all&size=${size}`,
+        {
+          headers: {
+            'x-rapidapi-key': RAPIDAPI_KEY,
+            'x-rapidapi-host': 'seeking-alpha.p.rapidapi.com',
+          },
+          timeout: 10000,
+        }
+      );
+      moreArticles = allNewsRes.data?.data || [];
+      moreIncluded = allNewsRes.data?.included || [];
+    } catch (e) {
+      console.warn('SA market-news fetch failed, using trending only:', (e as Error).message);
+    }
+
+    // Merge ticker maps
+    for (const item of moreIncluded) {
+      if (item.type === 'ticker' && item.attributes?.slug) {
+        tickerMap[item.id] = item.attributes.slug.toUpperCase();
+      }
+    }
+
+    // Deduplicate articles by id
+    const seenIds = new Set<string>();
+    const allArticles: SANewsItem[] = [];
+    for (const a of [...articles, ...moreArticles]) {
+      if (!seenIds.has(a.id)) {
+        seenIds.add(a.id);
+        allArticles.push(a);
+      }
+    }
+
+    const categorizedNews = allArticles.map((article) => {
       const headline = article.attributes?.title || '';
-      const summary = ''; // Seeking Alpha trending endpoint doesn't usually provide a summary in the list view
-      const categoryClass = categorizeNews(headline, summary);
-      
-      // Try to extract a symbol if present (often requires another endpoint, but we leave it empty for now)
+      const publishOn = article.attributes?.publishOn || '';
+      const categoryClass = categorizeNews(headline, '');
+
+      // Extract ticker symbols from relationships
+      const syms: string[] = [];
+      const primaryTickers = article.relationships?.primaryTickers?.data || [];
+      const secondaryTickers = article.relationships?.secondaryTickers?.data || [];
+      for (const t of [...primaryTickers, ...secondaryTickers]) {
+        const sym = tickerMap[t.id];
+        if (sym && !syms.includes(sym)) syms.push(sym);
+      }
+
       return {
-        id: article.id,
-        headline: headline,
-        summary: summary,
+        id: `sa-${article.id}`,
+        headline,
+        summary: '', // SA trending/list doesn't include summary in basic response
         url: `https://seekingalpha.com${article.links?.self || ''}`,
-        symbols: [],
-        createdAt: new Date().toISOString(), // The trending endpoint doesn't include exact publish time in the basic attributes, using now or we can parse it if available
+        symbols: syms,
+        createdAt: publishOn ? new Date(publishOn).toISOString() : new Date().toISOString(),
         category: getCategoryLabel(categoryClass),
         categoryClass,
-        source: 'Seeking Alpha'
+        source: 'Seeking Alpha',
       };
     });
 
     return NextResponse.json({ data: categorizedNews }, {
       headers: {
-        'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1800' // Cache news for 10 minutes
-      }
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+      },
     });
   } catch (error: unknown) {
-    const err = error as { response?: { data?: unknown }; message?: string };
-    console.error('Error fetching Seeking Alpha news, using fallback data:', err.response?.data || err.message);
-    
-    // Fallback Mock Data to ensure UI remains populated if rate-limited
-    const mockNews = [
-      {
-        id: `sa-mock-${Date.now()}-1`,
-        headline: "Major Biotech Firm Announces Positive Phase 3 Results for Oncology Drug",
-        summary: "The drug showed a statistically significant improvement in overall survival.",
-        url: "#",
-        symbols: ["PFE", "MRNA"],
-        createdAt: new Date().toISOString(),
-        category: "FDA",
-        categoryClass: "cat-fda",
-        source: "Seeking Alpha (Fallback)"
-      },
-      {
-        id: `sa-mock-${Date.now()}-2`,
-        headline: "Software Giant Acquires Promising Cybersecurity Startup for $2.5B",
-        summary: "The acquisition aims to bolster enterprise security offerings.",
-        url: "#",
-        symbols: ["CRWD", "PANW", "MSFT"],
-        createdAt: new Date(Date.now() - 1800000).toISOString(),
-        category: "Partnerships",
-        categoryClass: "cat-partnerships",
-        source: "Seeking Alpha (Fallback)"
-      },
-      {
-        id: `sa-mock-${Date.now()}-3`,
-        headline: "Energy Company Announces $500M Secondary Stock Offering",
-        summary: "Proceeds will be used to fund expansion of renewable energy projects.",
-        url: "#",
-        symbols: ["XOM", "CVX"],
-        createdAt: new Date(Date.now() - 5400000).toISOString(),
-        category: "Offerings",
-        categoryClass: "cat-offerings",
-        source: "Seeking Alpha (Fallback)"
-      }
-    ];
+    const err = error as { response?: { status?: number; data?: unknown }; message?: string };
+    console.error('Error fetching Seeking Alpha news:', err.response?.status, err.response?.data || err.message);
 
-    return NextResponse.json({ data: mockNews });
+    // Return empty instead of mock data — other sources will fill the feed
+    return NextResponse.json({ data: [] });
   }
 }

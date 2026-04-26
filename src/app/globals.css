@@ -127,4 +127,15 @@
 .cat-orders { color: #10b981; border-color: #10b98150; background: #10b98118; }
 .cat-fda { color: #ec4899; border-color: #ec489950; background: #ec489918; }
 .cat-offerings { color: #6366f1; border-color: #6366f150; background: #6366f118; }
+.cat-technology { color: #38bdf8; border-color: #38bdf850; background: #38bdf818; }
+.cat-healthcare { color: #34d399; border-color: #34d39950; background: #34d39918; }
+.cat-crypto { color: #fbbf24; border-color: #fbbf2450; background: #fbbf2418; }
+.cat-macro { color: #a78bfa; border-color: #a78bfa50; background: #a78bfa18; }
+.cat-energy { color: #fb923c; border-color: #fb923c50; background: #fb923c18; }
 .cat-others { color: #94a3b8; border-color: #94a3b850; background: #94a3b818; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }

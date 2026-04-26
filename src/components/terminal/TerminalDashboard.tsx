@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Activity, Newspaper, BrainCircuit, Filter, Clock, Globe, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getCategoryMatchTerms } from '@/lib/news';
 
 interface Gapper {
   symbol: string;
@@ -41,7 +42,7 @@ interface NewsItem {
 }
 
 interface TerminalDashboardProps {
-  categorySlug?: string; // e.g., 'technology', 'healthcare'
+  categorySlug?: string;
 }
 
 export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
@@ -50,46 +51,38 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
-  
-  // For AI summarization
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.add('dark');
-
     const fetchData = async () => {
       try {
         const [marketRes, newsRes] = await Promise.all([
           fetch('/api/market'),
           fetch('/api/news/all')
         ]);
-        
         const marketData = await marketRes.json();
         const incomingNewsData = await newsRes.json();
-        
+
         let fetchedGappers: Gapper[] = marketData.data || [];
-        
-        // Filter by category slug if provided
         if (categorySlug) {
-           fetchedGappers = fetchedGappers.filter(g => 
-              g.theme?.toLowerCase().includes(categorySlug.toLowerCase()) || 
-              g.industry?.toLowerCase().includes(categorySlug.toLowerCase())
-           );
+          const terms = getCategoryMatchTerms(categorySlug);
+          fetchedGappers = fetchedGappers.filter(g => {
+            const text = `${g.theme} ${g.industry} ${g.category} ${g.symbol}`.toLowerCase();
+            return terms.some(t => text.includes(t));
+          });
         }
         setGappers(fetchedGappers);
-        
+
         const incomingNews: NewsItem[] = incomingNewsData.data || [];
         setNews(prevNews => {
           const newMap = new Map(prevNews.map(n => [n.id.toString(), n]));
           incomingNews.forEach((n: NewsItem) => {
-            if (!newMap.has(n.id.toString())) {
-              newMap.set(n.id.toString(), n);
-            }
+            if (!newMap.has(n.id.toString())) newMap.set(n.id.toString(), n);
           });
-          const combinedNews = Array.from(newMap.values());
-          return combinedNews;
+          return Array.from(newMap.values());
         });
       } catch (error) {
         console.error("Error fetching data", error);
@@ -97,24 +90,20 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
         setLoading(false);
       }
     };
-
     fetchData();
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
   }, [categorySlug]);
 
-  // Categorization is now handled entirely on the server-side via regex in the route handlers.
-  // No client-side polling required anymore.
-
   const handleSummarize = async () => {
     setShowSummaryModal(true);
-    if (aiSummary) return; 
+    if (aiSummary) return;
     setIsSummarizing(true);
     try {
       const res = await fetch('/api/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ articles: filteredNews.slice(0, 10) }) // Summarize top 10 relevant news
+        body: JSON.stringify({ articles: filteredNews.slice(0, 10) })
       });
       const data = await res.json();
       if (data.data) setAiSummary(data.data);
@@ -132,21 +121,19 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
     return vol.toString();
   };
 
-  // React Compiler will automatically memoize this computation
   let filteredNews = [...news];
-  
   if (categorySlug) {
-      filteredNews = filteredNews.filter(n => {
-          const matchesCat = n.category.toLowerCase().includes(categorySlug.toLowerCase());
-          const matchesSym = n.symbols.some(sym => gappers.some(g => g.symbol === sym));
-          return matchesCat || matchesSym;
-      });
+    const terms = getCategoryMatchTerms(categorySlug);
+    filteredNews = filteredNews.filter(n => {
+      const text = `${n.category} ${n.headline} ${n.summary}`.toLowerCase();
+      const matchesTerm = terms.some(t => text.includes(t));
+      const matchesSym = n.symbols?.some(sym => gappers.some(g => g.symbol === sym));
+      return matchesTerm || matchesSym;
+    });
   }
-
   if (sourceFilter !== 'all') {
     filteredNews = filteredNews.filter(n => n.source?.toLowerCase().includes(sourceFilter.toLowerCase()));
   }
-
   filteredNews.sort((a, b) => {
     const tA = new Date(a.createdAt).getTime();
     const tB = new Date(b.createdAt).getTime();
@@ -156,120 +143,127 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
   const sources = Array.from(new Set(news.map(n => n.source || 'Unknown').filter(Boolean)));
 
   return (
-    <div className="flex h-full flex-col p-4 font-mono text-sm tracking-tight text-slate-300">
-      <header className="mb-4 flex items-center justify-between border-b border-border pb-2">
-        <h1 className="text-xl font-bold uppercase text-primary">
+    <div className="flex h-full flex-col p-2 sm:p-4 font-mono text-xs sm:text-sm tracking-tight text-slate-300">
+      {/* Header */}
+      <header className="mb-2 sm:mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-border pb-2 gap-2">
+        <h1 className="text-base sm:text-xl font-bold uppercase text-primary">
           {categorySlug ? `${categorySlug} Dashboard` : 'Global Overview'}
         </h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-             <Activity className="h-4 w-4 animate-pulse text-emerald-500" />
-             <span className="text-xs text-muted-foreground">LIVE DATA</span>
+            <Activity className="h-3 w-3 sm:h-4 sm:w-4 animate-pulse text-emerald-500" />
+            <span className="text-[10px] sm:text-xs text-muted-foreground">LIVE</span>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="h-8 border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 sm:h-8 text-[10px] sm:text-xs border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
             onClick={handleSummarize}
             disabled={isSummarizing || filteredNews.length === 0}
           >
-            <BrainCircuit className="mr-2 h-4 w-4" />
-            {isSummarizing ? 'Analyzing...' : 'Generate Intelligence Brief'}
+            <BrainCircuit className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">{isSummarizing ? 'Analyzing...' : 'Intelligence Brief'}</span>
+            <span className="sm:hidden">{isSummarizing ? '...' : 'Brief'}</span>
           </Button>
         </div>
       </header>
 
-      {/* Bloomberg-Style Stacked Layout */}
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
-        
-        {/* Top Pane: 17-Column Market Movers Table */}
-        <div className="flex h-[45%] flex-col rounded-md border border-border bg-card/30">
-          <div className="border-b border-border bg-muted/20 px-3 py-2 font-semibold uppercase">
+      {/* Stacked Layout */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2 sm:gap-4">
+
+        {/* Market Movers Table */}
+        <div className="flex min-h-[200px] h-[45%] flex-col rounded-md border border-border bg-card/30">
+          <div className="border-b border-border bg-muted/20 px-3 py-1.5 sm:py-2 font-semibold uppercase text-xs">
             Market Movers {categorySlug ? `(${categorySlug})` : ''}
+            <span className="ml-2 text-muted-foreground font-normal">({gappers.length})</span>
           </div>
-          <div className="overflow-x-auto custom-scrollbar">
-            <div className="min-w-[1800px] flex bg-muted/10 px-3 py-2 text-xs font-semibold text-muted-foreground border-b border-border">
-              <div className="w-20 shrink-0">TICKER</div>
-              <div className="w-24 shrink-0 text-right">PREMKT %</div>
-              <div className="w-24 shrink-0 text-right">PREMKT VOL</div>
-              <div className="w-24 shrink-0 text-right">VOL (1D)</div>
-              <div className="w-20 shrink-0 text-right">PRICE</div>
-              <div className="w-24 shrink-0 text-right">PREV CLOSE</div>
-              <div className="w-24 shrink-0 text-right">MKT CAP</div>
-              <div className="w-20 shrink-0 text-center">CAP SIZE</div>
-              <div className="w-20 shrink-0 text-right">FLOAT</div>
-              <div className="w-20 shrink-0 text-right">SHORT %</div>
-              <div className="w-32 shrink-0 px-2">THEME</div>
-              <div className="w-32 shrink-0 px-2">INDUSTRY</div>
-              <div className="w-24 shrink-0 px-2">CATEGORY</div>
-              <div className="w-16 shrink-0 text-center">GRADE</div>
-              <div className="w-32 shrink-0 text-right">REV GWTH EST</div>
-              <div className="w-32 shrink-0 text-right">EPS GWTH EST</div>
-              <div className="flex-1 shrink-0 px-4">CATALYST</div>
-            </div>
-            <ScrollArea className="h-full">
-              <div className="min-w-[1800px] flex flex-col divide-y divide-border/50 pb-8">
+          <div className="flex-1 overflow-auto">
+            {/* Wide table with horizontal scroll */}
+            <div className="min-w-[1400px]">
+              <div className="sticky top-0 z-10 flex bg-muted/20 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground border-b border-border">
+                <div className="w-16 shrink-0">TICKER</div>
+                <div className="w-20 shrink-0 text-right">CHG %</div>
+                <div className="w-20 shrink-0 text-right">VOL</div>
+                <div className="w-20 shrink-0 text-right">TRADES</div>
+                <div className="w-20 shrink-0 text-right">PRICE</div>
+                <div className="w-20 shrink-0 text-right">PREV CL</div>
+                <div className="w-20 shrink-0 text-right">MKT CAP</div>
+                <div className="w-16 shrink-0 text-center">SIZE</div>
+                <div className="w-20 shrink-0 text-right">FLOAT</div>
+                <div className="w-16 shrink-0 text-right">SI %</div>
+                <div className="w-28 shrink-0 px-1">THEME</div>
+                <div className="w-28 shrink-0 px-1">INDUSTRY</div>
+                <div className="w-16 shrink-0 text-center">TYPE</div>
+                <div className="w-14 shrink-0 text-center">GRD</div>
+                <div className="w-20 shrink-0 text-right">REV G</div>
+                <div className="w-20 shrink-0 text-right">EPS G</div>
+                <div className="flex-1 shrink-0 px-2">CATALYST</div>
+              </div>
+              <div className="flex flex-col divide-y divide-border/30">
                 {loading ? (
-                  Array(10).fill(0).map((_, i) => (
-                    <div key={i} className="flex px-3 py-2">
+                  Array(8).fill(0).map((_, i) => (
+                    <div key={i} className="flex px-3 py-1.5">
                       <Skeleton className="h-4 w-full bg-muted/50" />
                     </div>
                   ))
                 ) : gappers.length === 0 ? (
-                  <div className="p-4 text-center text-muted-foreground">No active movers found.</div>
+                  <div className="p-4 text-center text-muted-foreground text-xs">No active movers found{categorySlug ? ` for ${categorySlug}` : ''}.</div>
                 ) : (
-                  gappers.map((gapper, idx) => {
-                    const isUp = parseFloat(gapper.changePct) >= 0;
+                  gappers.map((g, idx) => {
+                    const isUp = parseFloat(g.changePct) >= 0;
                     return (
-                      <div key={idx} className="flex items-center px-3 py-2 hover:bg-muted/20 transition-colors text-xs">
-                        <div className="w-20 shrink-0 font-bold text-slate-200">{gapper.symbol}</div>
-                        <div className={cn("w-24 shrink-0 text-right font-medium", isUp ? "text-emerald-400" : "text-rose-400")}>
-                          {isUp ? '+' : ''}{gapper.changePct}%
+                      <div key={idx} className="flex items-center px-3 py-1 hover:bg-muted/20 transition-colors text-[11px]">
+                        <div className="w-16 shrink-0 font-bold text-slate-200">{g.symbol}</div>
+                        <div className={cn("w-20 shrink-0 text-right font-semibold", isUp ? "text-emerald-400" : "text-rose-400")}>
+                          {isUp ? '+' : ''}{g.changePct}%
                         </div>
-                        <div className="w-24 shrink-0 text-right text-slate-400">{formatVolume(gapper.volume)}</div>
-                        <div className="w-24 shrink-0 text-right text-slate-400">{formatVolume(gapper.trade_count || gapper.volume * 8.5)}</div>
-                        <div className="w-20 shrink-0 text-right">${gapper.price.toFixed(2)}</div>
-                        <div className="w-24 shrink-0 text-right">${gapper.prevClose.toFixed(2)}</div>
-                        <div className="w-24 shrink-0 text-right text-slate-300">{gapper.mktCap || '--'}</div>
-                        <div className="w-20 shrink-0 text-center text-slate-400">{gapper.capSize || '--'}</div>
-                        <div className="w-20 shrink-0 text-right text-slate-300">{gapper.float || '--'}</div>
-                        <div className="w-20 shrink-0 text-right text-slate-300">{gapper.shortPct || '--'}</div>
-                        <div className="w-32 shrink-0 px-2 text-muted-foreground truncate" title={gapper.theme}>{gapper.theme || '--'}</div>
-                        <div className="w-32 shrink-0 px-2 text-muted-foreground truncate" title={gapper.industry}>{gapper.industry || '--'}</div>
-                        <div className="w-24 shrink-0 px-2 text-muted-foreground truncate" title={gapper.category}>{gapper.category || '--'}</div>
-                        <div className="w-16 shrink-0 flex justify-center">
-                          <Badge variant="outline" className={cn("px-1 py-0 h-5 text-[10px]", 
-                            gapper.grade === 'A' ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" :
-                            gapper.grade === 'B' ? "border-blue-500/30 text-blue-400 bg-blue-500/10" :
-                            "border-amber-500/30 text-amber-400 bg-amber-500/10"
+                        <div className="w-20 shrink-0 text-right text-slate-400">{formatVolume(g.volume)}</div>
+                        <div className="w-20 shrink-0 text-right text-slate-400">{formatVolume(g.trade_count || 0)}</div>
+                        <div className="w-20 shrink-0 text-right">${g.price.toFixed(2)}</div>
+                        <div className="w-20 shrink-0 text-right text-slate-400">${g.prevClose.toFixed(2)}</div>
+                        <div className="w-20 shrink-0 text-right text-slate-300">{g.mktCap || '--'}</div>
+                        <div className="w-16 shrink-0 text-center text-slate-400">{g.capSize || '--'}</div>
+                        <div className="w-20 shrink-0 text-right text-slate-300">{g.float || '--'}</div>
+                        <div className="w-16 shrink-0 text-right text-slate-300">{g.shortPct || '--'}</div>
+                        <div className="w-28 shrink-0 px-1 text-muted-foreground truncate">{g.theme || '--'}</div>
+                        <div className="w-28 shrink-0 px-1 text-muted-foreground truncate">{g.industry || '--'}</div>
+                        <div className="w-16 shrink-0 text-center text-muted-foreground">{g.category || '--'}</div>
+                        <div className="w-14 shrink-0 flex justify-center">
+                          <Badge variant="outline" className={cn("px-1 py-0 h-4 text-[9px]",
+                            g.grade === 'A' ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" :
+                            g.grade === 'B' ? "border-blue-500/30 text-blue-400 bg-blue-500/10" :
+                            g.grade === 'C' ? "border-amber-500/30 text-amber-400 bg-amber-500/10" :
+                            "border-red-500/30 text-red-400 bg-red-500/10"
                           )}>
-                            {gapper.grade}
+                            {g.grade}
                           </Badge>
                         </div>
-                        <div className="w-32 shrink-0 text-right text-emerald-400/80">{gapper.revGrowth || '--'}</div>
-                        <div className="w-32 shrink-0 text-right text-emerald-400/80">{gapper.epsGrowth || '--'}</div>
-                        <div className="flex-1 shrink-0 px-4 text-slate-400 truncate" title={gapper.catalyst}>{gapper.catalyst || '--'}</div>
+                        <div className={cn("w-20 shrink-0 text-right", g.revGrowth !== '--' ? "text-emerald-400/80" : "text-slate-500")}>{g.revGrowth || '--'}</div>
+                        <div className={cn("w-20 shrink-0 text-right", g.epsGrowth !== '--' ? "text-emerald-400/80" : "text-slate-500")}>{g.epsGrowth || '--'}</div>
+                        <div className="flex-1 shrink-0 px-2 text-slate-400 truncate" title={g.catalyst}>{g.catalyst || '--'}</div>
                       </div>
                     );
                   })
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </div>
         </div>
 
-        {/* Bottom Pane: Unified News Terminal */}
-        <div className="flex h-[55%] flex-col rounded-md border border-border bg-card/30">
-          <div className="flex items-center justify-between border-b border-border bg-muted/20 px-3 py-2">
-            <div className="font-semibold uppercase flex items-center gap-2">
-              <Newspaper className="h-4 w-4" />
-              Unified Intelligence Feed
+        {/* News Feed */}
+        <div className="flex min-h-[200px] h-[55%] flex-col rounded-md border border-border bg-card/30">
+          <div className="flex items-center justify-between border-b border-border bg-muted/20 px-3 py-1.5 sm:py-2">
+            <div className="font-semibold uppercase flex items-center gap-2 text-xs">
+              <Newspaper className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Unified Intelligence Feed</span>
+              <span className="sm:hidden">News Feed</span>
+              <span className="text-muted-foreground font-normal">({filteredNews.length})</span>
             </div>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="flex items-center gap-1 border border-border rounded px-2 py-1 bg-background">
-                <Filter className="h-3 w-3" />
-                <select 
-                  className="bg-transparent outline-none text-muted-foreground"
+            <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs">
+              <div className="flex items-center gap-1 border border-border rounded px-1.5 sm:px-2 py-0.5 sm:py-1 bg-background">
+                <Filter className="h-3 w-3 hidden sm:block" />
+                <select
+                  className="bg-transparent outline-none text-muted-foreground max-w-[80px] sm:max-w-none"
                   value={sourceFilter}
                   onChange={(e) => setSourceFilter(e.target.value)}
                 >
@@ -277,65 +271,65 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                   {sources.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              <div className="flex items-center gap-1 border border-border rounded px-2 py-1 bg-background">
-                <Clock className="h-3 w-3" />
-                <select 
+              <div className="flex items-center gap-1 border border-border rounded px-1.5 sm:px-2 py-0.5 sm:py-1 bg-background">
+                <Clock className="h-3 w-3 hidden sm:block" />
+                <select
                   className="bg-transparent outline-none text-muted-foreground"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as 'newest' | 'oldest')}
                 >
-                  <option value="newest">Newest First</option>
-                  <option value="oldest">Oldest First</option>
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
                 </select>
               </div>
             </div>
           </div>
-          
+
           <ScrollArea className="flex-1">
-            <div className="flex flex-col divide-y divide-border/50">
+            <div className="flex flex-col divide-y divide-border/30">
               {loading ? (
-                 Array(8).fill(0).map((_, i) => (
+                Array(6).fill(0).map((_, i) => (
                   <div key={i} className="p-3">
                     <Skeleton className="h-4 w-3/4 mb-2 bg-muted/50" />
                     <Skeleton className="h-3 w-1/2 bg-muted/50" />
                   </div>
                 ))
               ) : filteredNews.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">No news matching criteria.</div>
+                <div className="p-4 text-center text-muted-foreground text-xs">No news matching criteria.</div>
               ) : (
                 filteredNews.map((item) => (
-                  <a 
-                    key={item.id} 
-                    href={item.url} 
-                    target="_blank" 
+                  <a
+                    key={item.id}
+                    href={item.url}
+                    target="_blank"
                     rel="noreferrer"
-                    className="flex flex-col gap-1 p-3 hover:bg-muted/10 transition-colors group"
+                    className="flex flex-col gap-1 p-2 sm:p-3 hover:bg-muted/10 transition-colors group"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground flex items-center gap-2">
-                        <Globe className="h-3 w-3" />
-                        {item.source || 'News'} • {new Date(item.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 sm:gap-2 shrink-0">
+                        <Globe className="h-3 w-3 hidden sm:block" />
+                        {item.source || 'News'} • {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
                         {item.symbols && item.symbols.length > 0 && (
-                          <div className="flex gap-1">
+                          <div className="flex gap-0.5 sm:gap-1">
                             {item.symbols.slice(0, 3).map(sym => (
-                              <Badge key={sym} variant="outline" className="text-[10px] h-4 px-1 rounded-sm border-muted-foreground/30">
+                              <Badge key={sym} variant="outline" className="text-[9px] sm:text-[10px] h-4 px-1 rounded-sm border-muted-foreground/30">
                                 {sym}
                               </Badge>
                             ))}
                           </div>
                         )}
-                        <Badge variant="outline" className={cn("text-[10px] h-4 px-1 rounded-sm", item.categoryClass)}>
+                        <Badge variant="outline" className={cn("text-[9px] sm:text-[10px] h-4 px-1 rounded-sm", item.categoryClass)}>
                           {item.category}
                         </Badge>
                       </div>
                     </div>
-                    <div className="font-medium text-slate-200 group-hover:text-primary transition-colors">
+                    <div className="font-medium text-slate-200 group-hover:text-primary transition-colors text-xs sm:text-sm">
                       {item.headline}
                     </div>
                     {item.summary && (
-                      <div className="text-xs text-slate-400 line-clamp-2 mt-1">
+                      <div className="text-[10px] sm:text-xs text-slate-400 line-clamp-2 mt-0.5">
                         {item.summary}
                       </div>
                     )}
@@ -350,18 +344,17 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
       {/* AI Summary Modal */}
       {showSummaryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl rounded-lg border border-primary/20 bg-card p-6 shadow-2xl shadow-primary/10">
+          <div className="w-full max-w-2xl rounded-lg border border-primary/20 bg-card p-4 sm:p-6 shadow-2xl shadow-primary/10">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <BrainCircuit className="h-5 w-5 text-primary" />
-                <h2 className="text-lg font-bold text-foreground">AI Intelligence Brief</h2>
+                <h2 className="text-base sm:text-lg font-bold text-foreground">AI Intelligence Brief</h2>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setShowSummaryModal(false)}>
                 <span className="sr-only">Close</span>
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            
             <ScrollArea className="max-h-[60vh]">
               {isSummarizing ? (
                 <div className="space-y-4 py-4">

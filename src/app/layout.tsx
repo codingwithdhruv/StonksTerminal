@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "StonksTerminal Pro",
-  description: "Bloomberg-style end-to-end pre-market intelligence terminal.",
+  description: "Bloomberg-style end-to-end pre-market intelligence terminal with live market data, news aggregation, and AI-powered analysis.",
 };
 
 export default function RootLayout({
@@ -30,7 +30,7 @@ export default function RootLayout({
     >
       <body className="flex h-screen overflow-hidden bg-background font-sans text-foreground">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto pl-0 lg:pl-0">{children}</main>
       </body>
     </html>
   );
