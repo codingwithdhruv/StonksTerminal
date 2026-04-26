@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { categorizeNews, getCategoryLabel } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp } from '@/lib/news';
 
 export const revalidate = 60; // Cache for 60 seconds
 
@@ -53,12 +53,13 @@ export async function GET() {
         source: item.source || 'Finnhub',
         url: item.url,
         // Convert UNIX timestamp in seconds to ISO string
-        createdAt: new Date(item.datetime * 1000).toISOString(),
+        createdAt: normalizeTimestamp(item.datetime * 1000).iso,
+        _timestamp: normalizeTimestamp(item.datetime * 1000).unix,
         category: getCategoryLabel(categoryClass),
         categoryClass: categoryClass,
         symbols: item.related ? item.related.split(',') : [],
         // Pass through Finnhub's image URL
-        imageUrl: item.image || undefined,
+        imageUrl: item.image || '/images/news-placeholder.png',
       };
     });
 

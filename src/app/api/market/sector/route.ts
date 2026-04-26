@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
+import { fetchSectorTickers, classifyTheme, formatGrowth } from '@/lib/market';
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
@@ -12,64 +13,8 @@ const alpacaHeaders = {
   'APCA-API-SECRET-KEY': ALPACA_API_SECRET_KEY || '',
 };
 
-// Curated sector ticker lists — top traded stocks per sector
-const SECTOR_TICKERS: Record<string, string[]> = {
-  technology: [
-    'AAPL','MSFT','NVDA','AMD','INTC','GOOGL','META','AMZN','AVGO','QCOM',
-    'TSM','CRM','ORCL','ADBE','NOW','SHOP','PLTR','SNOW','MU','DELL',
-    'NET','UBER','MRVL','ARM','SMCI','CRWD','PANW','ZS','DDOG','ANET',
-  ],
-  healthcare: [
-    'UNH','JNJ','LLY','PFE','ABBV','MRK','TMO','ABT','DHR','BMY',
-    'AMGN','GILD','VRTX','REGN','ISRG','MDT','SYK','BSX','ZTS','HCA',
-    'MRNA','BIIB','ILMN','DXCM','ALGN','HIMS','DNA','RXRX','ARCT','SGEN',
-  ],
-  crypto: [
-    'COIN','MARA','RIOT','MSTR','CLSK','HUT','BITF','CIFR','WULF','BTBT',
-    'SI','ARBK','SOS','CORZ','GREE','BTDR','IREN','HIVE','DGII','HOOD',
-  ],
-  energy: [
-    'XOM','CVX','COP','SLB','EOG','MPC','PSX','VLO','OXY','PXD',
-    'DVN','HAL','FANG','HES','BKR','ENPH','SEDG','FSLR','RUN','PLUG',
-    'NEE','DUK','SO','AES','CWEN','NOVA','ARRY','STEM','BE','CHPT',
-  ],
-  macro: [
-    'SPY','QQQ','IWM','DIA','TLT','GLD','SLV','UNG','USO','VXX',
-    'JPM','BAC','GS','MS','C','WFC','BRK.B','BLK','SCHW','AXP',
-    'V','MA','PYPL','SQ','AFRM','SOFI','NU','UPST','LC','ALLY',
-  ],
-  fda: [
-    'MRNA','PFE','BNTX','NVAX','REGN','VRTX','SGEN','BMRN','ALNY','IONS',
-    'RARE','BLUE','SRPT','EXEL','HALO','PCVX','RCKT','FATE','CRSP','NTLA',
-    'BEAM','EDIT','VERV','ACAD','ARCT','DNLI','APLS','IMVT','RVMD','SRRK',
-  ],
-  earnings: [
-    'AAPL','MSFT','GOOGL','AMZN','META','NVDA','TSLA','NFLX','AMD','INTC',
-    'CRM','ORCL','ADBE','NOW','SHOP','PLTR','SNOW','MU','JPM','BAC',
-    'GS','WFC','UNH','JNJ','PFE','XOM','CVX','HD','WMT','COST',
-  ],
-};
 
-function classifyTheme(industry: string, name: string): string {
-  const text = `${industry} ${name}`.toLowerCase();
-  if (text.match(/semiconductor|chip|silicon|wafer/)) return 'Semiconductors';
-  if (text.match(/software|cloud|saas|platform/)) return 'Software';
-  if (text.match(/biotech|pharma|drug|therapeut|oncol/)) return 'Biotechnology';
-  if (text.match(/bank|financ|capital|asset management/)) return 'Financials';
-  if (text.match(/energy|oil|gas|solar|wind|renew/)) return 'Energy';
-  if (text.match(/crypto|bitcoin|blockchain|defi/)) return 'Crypto';
-  if (text.match(/health|medical|hospital|diagnostic/)) return 'Healthcare';
-  if (text.match(/retail|consumer|e-commerce|shop/)) return 'Consumer';
-  if (text.match(/telecom|communic|media|stream/)) return 'Communications';
-  if (text.match(/auto|vehicle|ev |electric vehicle|motor/)) return 'Automotive';
-  return industry || 'General';
-}
-
-/** Format growth values from SA get-metrics. Already in percentage form. */
-function formatGrowth(val: number | undefined | null): string {
-  if (val == null) return '--';
-  return (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
-}
+// Metrics
 
 interface AlpacaSnapshot {
   latestTrade?: { p: number };
@@ -183,9 +128,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sector = searchParams.get('sector') || 'technology';
 
-  const tickers = SECTOR_TICKERS[sector.toLowerCase()];
-  if (!tickers) {
-    return NextResponse.json({ error: `Unknown sector: ${sector}` }, { status: 400 });
+  const tickers = await fetchSectorTickers(sector);
+  if (!tickers || tickers.length === 0) {
+    return NextResponse.json({ error: `No tickers found for sector: ${sector}. Ensure RAPIDAPI_KEY is configured.` }, { status: 404 });
   }
 
   try {

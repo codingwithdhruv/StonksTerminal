@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { categorizeNews, getCategoryLabel } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp } from '@/lib/news';
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 
@@ -129,7 +129,8 @@ export async function GET(request: Request) {
         summary: '', // SA trending/list doesn't include summary in basic response
         url: `https://seekingalpha.com${article.links?.self || ''}`,
         symbols: syms,
-        createdAt: publishOn ? new Date(publishOn).toISOString() : new Date().toISOString(),
+        createdAt: normalizeTimestamp(publishOn || Date.now()).iso,
+        _timestamp: normalizeTimestamp(publishOn || Date.now()).unix,
         category: getCategoryLabel(categoryClass),
         categoryClass,
         source: 'Seeking Alpha',

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
+import { fetchDynamicEtfs, classifyTheme, formatGrowth } from '@/lib/market';
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
@@ -27,41 +28,30 @@ interface AlpacaSnapshot {
   prevDailyBar?: { c: number };
 }
 
-// Known ETF tickers
-const KNOWN_ETFS = new Set([
-  'SOXL','SOXS','TQQQ','SQQQ','QQQ','SPY','IWM','UVXY','SPXS','SPXL',
-  'LABU','LABD','ARKK','TNA','TZA','FAS','FAZ','DUST','NUGT','JNUG',
-  'JDST','TECL','TECS','FNGU','FNGD','UPRO','SDOW','UDOW','SH','SDS',
-  'SSO','VOO','VTI','DIA','XLF','XLK','XLE','XLV','XLI','XLRE','XLC',
-  'XLY','XLP','XLB','XLU','UVIX','TSLL','TSLG','NVD','NVDL','SOXL',
-]);
+// Dynamic ETF cache
+let cachedEtfs: Set<string> = new Set();
+let lastEtfFetch = 0;
+const ETF_CACHE_DURATION = 3600000; // 1 hour
 
-function classifyTheme(industry: string, name: string): string {
-  const text = `${industry} ${name}`.toLowerCase();
-  if (text.match(/semiconductor|chip|silicon|wafer/)) return 'Semiconductors';
-  if (text.match(/software|cloud|saas|platform/)) return 'Software';
-  if (text.match(/biotech|pharma|drug|therapeut|oncol/)) return 'Biotechnology';
-  if (text.match(/bank|financ|capital|asset management/)) return 'Financials';
-  if (text.match(/energy|oil|gas|solar|wind|renew/)) return 'Energy';
-  if (text.match(/crypto|bitcoin|blockchain|defi/)) return 'Crypto';
-  if (text.match(/health|medical|hospital|diagnostic/)) return 'Healthcare';
-  if (text.match(/retail|consumer|e-commerce|shop/)) return 'Consumer';
-  if (text.match(/telecom|communic|media|stream/)) return 'Communications';
-  if (text.match(/industrial|manufact|aerospace|defense/)) return 'Industrials';
-  if (text.match(/real estate|reit|property/)) return 'Real Estate';
-  if (text.match(/food|beverage|restaurant|grocer/)) return 'Food & Bev';
-  if (text.match(/auto|vehicle|ev |electric vehicle|motor/)) return 'Automotive';
-  if (text.match(/electric|power|utility/)) return 'Utilities';
-  return industry || 'General';
+async function getEtfSymbols(): Promise<Set<string>> {
+  const now = Date.now();
+  if (cachedEtfs.size > 0 && (now - lastEtfFetch < ETF_CACHE_DURATION)) {
+    return cachedEtfs;
+  }
+  
+  const dynamicEtfs = await fetchDynamicEtfs();
+  // Fallback to a minimal set if dynamic fetch fails to ensure UI doesn't break
+  const fallbackEtfs = ['SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'VOO', 'XLF', 'XLK', 'XLE', 'XLV'];
+  
+  const newSet = new Set([...dynamicEtfs, ...fallbackEtfs]);
+  cachedEtfs = newSet;
+  lastEtfFetch = now;
+  return newSet;
 }
 
-/** Format revenue/eps growth. SA returns percentage values (10.07 = 10.07%, -0.4671 = -46.71%) */
-function formatGrowth(val: number | undefined | null): string {
-  if (val == null) return '--';
-  // SA get-metrics returns values like 10.071 meaning 10.07%, -84.9 meaning -84.9%
-  // Values are already in percentage form
-  return (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
-}
+// Snapshots from Alpaca
+
+// Metrics
 
 /**
  * Fetch SA get-metrics for SI%, rev growth, EPS growth, and stock logos.
@@ -213,6 +203,7 @@ async function fetchCatalysts(symbols: string[]): Promise<Record<string, string>
 
 export async function GET() {
   try {
+    const etfSymbols = await getEtfSymbols();
     // 1. Get most active stocks (top 50) + movers for more coverage
     const [screenerRes, moversRes] = await Promise.allSettled([
       axios.get(`${ALPACA_DATA_URL}/v1beta1/screener/stocks/most-actives?by=volume&top=50`, { headers: alpacaHeaders }),
@@ -261,7 +252,7 @@ export async function GET() {
     }
 
     // 3. Fetch Finnhub profiles (batch, skip ETFs)
-    const nonEtfSymbols = symbols.filter(s => !KNOWN_ETFS.has(s));
+    const nonEtfSymbols = symbols.filter(s => !etfSymbols.has(s));
     const profiles: Record<string, FinnhubProfile | null> = {};
 
     if (FINNHUB_API_KEY) {
@@ -299,7 +290,7 @@ export async function GET() {
       const snap = snapshots[sym];
       const prof = profiles[sym] || null;
       const sa = saMetrics[sym] || {};
-      const isEtf = KNOWN_ETFS.has(sym);
+      const isEtf = etfSymbols.has(sym) || prof?.finnhubIndustry?.toLowerCase().includes('etf');
       const vol = volumeMap.get(sym) || { volume: 0, trade_count: 0 };
 
       let price = 0, prevClose = 0, changePct = 0;

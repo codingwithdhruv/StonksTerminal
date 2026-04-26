@@ -190,7 +190,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                 <div className="w-14 shrink-0 text-center">GRD</div>
                 <div className="w-20 shrink-0 text-right">REV G</div>
                 <div className="w-20 shrink-0 text-right">EPS G</div>
-                <div className="w-[500px] shrink-0 px-4">CATALYST / KEY DEVELOPMENTS</div>
+                <div className="flex-1 min-w-[500px] px-4">CATALYST / KEY DEVELOPMENTS</div>
               </div>
               <div className="flex flex-col divide-y divide-border/30">
                 {loading ? (
@@ -251,7 +251,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                           g.epsGrowth === '--' ? "text-slate-500" :
                           g.epsGrowth?.startsWith('+') ? "text-emerald-400" : "text-rose-400"
                         )}>{g.epsGrowth || '--'}</div>
-                        <div className="w-[500px] shrink-0 px-4 text-slate-300 leading-normal line-clamp-2" title={g.catalyst}>
+                        <div className="flex-1 min-w-[500px] px-4 text-slate-300 leading-relaxed py-2 break-words text-left" title={g.catalyst}>
                           {g.catalyst || '--'}
                         </div>
                       </div>
@@ -319,21 +319,24 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                     className="flex gap-3 p-2 sm:p-3 hover:bg-muted/10 transition-colors group"
                   >
                     {/* News thumbnail */}
-                    {item.imageUrl && (
-                      <div className="hidden sm:block shrink-0 w-20 h-14 rounded overflow-hidden bg-muted/30">
-                        <img
-                          src={item.imageUrl}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
-                        />
-                      </div>
-                    )}
+                    <div className="hidden sm:block shrink-0 w-24 h-16 rounded overflow-hidden bg-muted/20 border border-white/5 shadow-inner">
+                      <img
+                        src={item.imageUrl || '/images/news-placeholder.png'}
+                        alt=""
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        onError={(e) => { 
+                          const target = e.target as HTMLImageElement;
+                          if (target.src !== '/images/news-placeholder.png') {
+                            target.src = '/images/news-placeholder.png';
+                          }
+                        }}
+                      />
+                    </div>
                     <div className="flex flex-col gap-1 flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 sm:gap-2 shrink-0">
                           <Globe className="h-3 w-3 hidden sm:block" />
-                          {item.source || 'News'} • {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {item.source || 'News'} • {new Date(item.createdAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}
                         </span>
                         <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
                           {item.symbols && item.symbols.length > 0 && (
@@ -494,7 +497,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                     .map((item, i) => (
                       <a key={i} href={item.url} target="_blank" rel="noreferrer" className="block p-3 rounded border border-border/50 hover:border-primary/50 bg-muted/5 transition-all group">
                         <div className="flex justify-between items-start mb-1">
-                          <span className="text-[9px] text-muted-foreground">{item.source} • {new Date(item.createdAt).toLocaleDateString()}</span>
+                          <span className="text-[9px] text-muted-foreground">{item.source} • {new Date(item.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}</span>
                         </div>
                         <p className="text-xs font-medium text-slate-300 group-hover:text-primary transition-colors line-clamp-2">{item.headline}</p>
                       </a>

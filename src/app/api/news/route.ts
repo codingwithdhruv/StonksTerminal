@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { categorizeNews, getCategoryLabel } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp } from '@/lib/news';
 
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
@@ -62,11 +62,11 @@ export async function GET(request: Request) {
       // Extract best image: prefer "large" > "small" > "thumb"
       let imageUrl: string | undefined;
       if (article.images && article.images.length > 0) {
-        const large = article.images.find(i => i.size === 'large');
-        const small = article.images.find(i => i.size === 'small');
-        const thumb = article.images.find(i => i.size === 'thumb');
-        imageUrl = large?.url || small?.url || thumb?.url;
+        imageUrl = article.images.find(i => i.size === 'large')?.url || 
+                   article.images.find(i => i.size === 'small')?.url;
       }
+
+      const { iso, unix } = normalizeTimestamp(article.created_at);
 
       return {
         id: article.id,
@@ -74,13 +74,17 @@ export async function GET(request: Request) {
         summary: article.summary,
         url: article.url,
         symbols: article.symbols || [],
-        createdAt: article.created_at,
+        createdAt: iso,
+        _timestamp: unix,
         category: getCategoryLabel(categoryClass),
         categoryClass,
         source: article.source || 'Alpaca',
-        imageUrl,
+        imageUrl: imageUrl || '/images/news-placeholder.png',
       };
     });
+
+    // Sort by normalized timestamp
+    categorizedNews.sort((a, b) => b._timestamp - a._timestamp);
 
     return NextResponse.json({ data: categorizedNews }, {
       headers: {

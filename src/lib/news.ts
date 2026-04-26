@@ -78,3 +78,25 @@ export function getCategoryMatchTerms(slug: string): string[] {
       return [slug];
   }
 }
+
+/**
+ * Normalizes a date string or number to an ISO string, 
+ * handling cases where IST (UTC+5.5) might have been misinterpreted as UTC.
+ */
+export function normalizeTimestamp(input: string | number): { iso: string; unix: number } {
+  const dateObj = new Date(input);
+  let timestamp = dateObj.getTime();
+  const now = Date.now();
+
+  // If the timestamp is in the future by more than 3 hours, 
+  // it's highly likely it was a local IST time treated as UTC.
+  // We subtract 5.5 hours to bring it back to UTC.
+  if (timestamp > now + 3 * 3600000) {
+    timestamp -= 5.5 * 3600000;
+  }
+
+  return {
+    iso: new Date(timestamp).toISOString(),
+    unix: timestamp
+  };
+}

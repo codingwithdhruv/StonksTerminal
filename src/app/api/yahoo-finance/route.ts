@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { categorizeNews, getCategoryLabel } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp } from '@/lib/news';
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 
@@ -80,9 +80,10 @@ export async function GET() {
             summary: c.summary || '',
             url: c.clickThroughUrl?.url || '',
             symbols,
-            createdAt: c.pubDate ? new Date(c.pubDate).toISOString() : new Date().toISOString(),
+            createdAt: normalizeTimestamp(c.pubDate || Date.now()).iso,
+            _timestamp: normalizeTimestamp(c.pubDate || Date.now()).unix,
             source: c.provider?.displayName || 'Yahoo Finance',
-            imageUrl: bestThumb?.url || undefined,
+            imageUrl: bestThumb?.url || '/images/news-placeholder.png',
           };
         });
     } else {
@@ -101,11 +102,10 @@ export async function GET() {
           summary: article.summary || '',
           url: article.link || '',
           symbols: article.relatedTickers || [],
-          createdAt: article.providerPublishTime
-            ? new Date(article.providerPublishTime * 1000).toISOString()
-            : new Date().toISOString(),
+          createdAt: normalizeTimestamp(article.providerPublishTime ? article.providerPublishTime * 1000 : Date.now()).iso,
+          _timestamp: normalizeTimestamp(article.providerPublishTime ? article.providerPublishTime * 1000 : Date.now()).unix,
           source: article.publisher || 'Yahoo Finance',
-          imageUrl: bestThumb?.url || undefined,
+          imageUrl: bestThumb?.url || '/images/news-placeholder.png',
         };
       });
     }
