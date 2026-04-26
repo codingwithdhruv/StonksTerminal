@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { categorizeNews, getCategoryLabel } from '@/lib/news';
 
 export const revalidate = 60; // Cache for 60 seconds
 
@@ -42,17 +43,21 @@ export async function GET() {
     // Map Finnhub response to our common NewsItem interface
     // Finnhub response shape: 
     // { category, datetime (seconds), headline, id, image, related (comma-separated), source, summary, url }
-    const formattedNews = data.slice(0, 100).map((item) => ({
-      id: `finnhub-${item.id}`,
-      headline: item.headline,
-      summary: item.summary,
-      source: item.source || 'Finnhub',
-      url: item.url,
-      // Convert UNIX timestamp in seconds to ISO string
-      createdAt: new Date(item.datetime * 1000).toISOString(),
-      category: 'Pending AI', // Will be categorized by NIM AI later
-      symbols: item.related ? item.related.split(',') : [],
-    }));
+    const formattedNews = data.slice(0, 100).map((item) => {
+      const categoryClass = categorizeNews(item.headline, item.summary);
+      return {
+        id: `finnhub-${item.id}`,
+        headline: item.headline,
+        summary: item.summary,
+        source: item.source || 'Finnhub',
+        url: item.url,
+        // Convert UNIX timestamp in seconds to ISO string
+        createdAt: new Date(item.datetime * 1000).toISOString(),
+        category: getCategoryLabel(categoryClass),
+        categoryClass: categoryClass,
+        symbols: item.related ? item.related.split(',') : [],
+      };
+    });
 
     return NextResponse.json({ data: formattedNews });
   } catch (error: unknown) {

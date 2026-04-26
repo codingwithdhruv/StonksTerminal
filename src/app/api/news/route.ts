@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
+import { categorizeNews, getCategoryLabel } from '@/lib/news';
 
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
@@ -34,6 +35,7 @@ export async function GET(request: Request) {
     const articles: AlpacaNews[] = newsRes.data.news || [];
 
     const categorizedNews = articles.map((article) => {
+      const categoryClass = categorizeNews(article.headline, article.summary);
       return {
         id: article.id,
         headline: article.headline,
@@ -41,8 +43,8 @@ export async function GET(request: Request) {
         url: article.url,
         symbols: article.symbols,
         createdAt: article.created_at,
-        category: 'Pending AI',
-        categoryClass: 'border-muted text-muted-foreground bg-muted/10'
+        category: getCategoryLabel(categoryClass),
+        categoryClass: categoryClass
       };
     });
 

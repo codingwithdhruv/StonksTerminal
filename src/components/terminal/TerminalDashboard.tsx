@@ -14,6 +14,7 @@ interface Gapper {
   prevClose: number;
   changePct: string;
   volume: number;
+  trade_count?: number;
   grade: string;
   mktCap?: string;
   capSize?: string;
@@ -47,7 +48,6 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
   const [gappers, setGappers] = useState<Gapper[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [processingAiIds, setProcessingAiIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<'newest' | 'oldest'>('newest');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   
@@ -103,55 +103,8 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
     return () => clearInterval(interval);
   }, [categorySlug]);
 
-  useEffect(() => {
-    const uncategorized = news.filter(n => n.category === 'Pending AI' && !processingAiIds.has(n.id.toString()));
-    if (uncategorized.length === 0) return;
-
-    const batch = uncategorized.slice(0, 5); 
-    const batchIds = batch.map(n => n.id.toString());
-    
-    queueMicrotask(() => {
-      setProcessingAiIds(prev => {
-        const next = new Set(prev);
-        batchIds.forEach(id => next.add(id));
-        return next;
-      });
-    });
-
-    fetch('/api/categorize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        articles: batch.map(n => ({ id: n.id, headline: n.headline, summary: n.summary }))
-      })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.categories) {
-        setNews(prev => prev.map(n => {
-          const newCat = data.categories[n.id.toString()];
-          if (newCat) {
-            let catClass = "border-blue-500/30 text-blue-400 bg-blue-500/10";
-            if (newCat.toLowerCase().includes('earn')) catClass = "border-emerald-500/30 text-emerald-400 bg-emerald-500/10";
-            if (newCat.toLowerCase().includes('fda') || newCat.toLowerCase().includes('partner')) catClass = "border-purple-500/30 text-purple-400 bg-purple-500/10";
-            if (newCat.toLowerCase().includes('offer')) catClass = "border-rose-500/30 text-rose-400 bg-rose-500/10";
-            if (newCat.toLowerCase().includes('up') || newCat.toLowerCase().includes('down')) catClass = "border-cyan-500/30 text-cyan-400 bg-cyan-500/10";
-            
-            return { ...n, category: newCat, categoryClass: catClass };
-          }
-          return n;
-        }));
-      }
-    })
-    .catch(err => console.error('Categorization error:', err))
-    .finally(() => {
-      setProcessingAiIds(prev => {
-        const next = new Set(prev);
-        batchIds.forEach(id => next.delete(id));
-        return next;
-      });
-    });
-  }, [news, processingAiIds]);
+  // Categorization is now handled entirely on the server-side via regex in the route handlers.
+  // No client-side polling required anymore.
 
   const handleSummarize = async () => {
     setShowSummaryModal(true);
@@ -226,55 +179,87 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
         </div>
       </header>
 
-      {/* Bloomberg-Style Dense Grid */}
-      <div className="grid min-h-0 flex-1 grid-cols-12 gap-4">
+      {/* Bloomberg-Style Stacked Layout */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         
-        {/* Left Pane: Market Movers */}
-        <div className="col-span-5 flex flex-col rounded-md border border-border bg-card/30">
+        {/* Top Pane: 17-Column Market Movers Table */}
+        <div className="flex h-[45%] flex-col rounded-md border border-border bg-card/30">
           <div className="border-b border-border bg-muted/20 px-3 py-2 font-semibold uppercase">
             Market Movers {categorySlug ? `(${categorySlug})` : ''}
           </div>
-          <div className="flex bg-muted/10 px-3 py-2 text-xs font-semibold text-muted-foreground border-b border-border">
-            <div className="w-16">SYM</div>
-            <div className="w-20 text-right">PRICE</div>
-            <div className="w-20 text-right">CHG %</div>
-            <div className="w-20 text-right">VOL</div>
-            <div className="flex-1 text-right">THEME/IND</div>
-          </div>
-          <ScrollArea className="flex-1">
-            <div className="flex flex-col divide-y divide-border/50">
-              {loading ? (
-                Array(10).fill(0).map((_, i) => (
-                  <div key={i} className="flex px-3 py-2">
-                    <Skeleton className="h-4 w-full bg-muted/50" />
-                  </div>
-                ))
-              ) : gappers.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">No active movers found.</div>
-              ) : (
-                gappers.map((gapper, idx) => {
-                  const isUp = parseFloat(gapper.changePct) >= 0;
-                  return (
-                    <div key={idx} className="flex items-center px-3 py-2 hover:bg-muted/20 transition-colors">
-                      <div className="w-16 font-bold text-slate-200">{gapper.symbol}</div>
-                      <div className="w-20 text-right">${gapper.price.toFixed(2)}</div>
-                      <div className={cn("w-20 text-right font-medium", isUp ? "text-emerald-400" : "text-rose-400")}>
-                        {isUp ? '+' : ''}{gapper.changePct}%
-                      </div>
-                      <div className="w-20 text-right text-slate-400">{formatVolume(gapper.volume)}</div>
-                      <div className="flex-1 text-right text-xs text-muted-foreground truncate pl-2">
-                        {gapper.theme || gapper.industry || '--'}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+          <div className="overflow-x-auto custom-scrollbar">
+            <div className="min-w-[1800px] flex bg-muted/10 px-3 py-2 text-xs font-semibold text-muted-foreground border-b border-border">
+              <div className="w-20 shrink-0">TICKER</div>
+              <div className="w-24 shrink-0 text-right">PREMKT %</div>
+              <div className="w-24 shrink-0 text-right">PREMKT VOL</div>
+              <div className="w-24 shrink-0 text-right">VOL (1D)</div>
+              <div className="w-20 shrink-0 text-right">PRICE</div>
+              <div className="w-24 shrink-0 text-right">PREV CLOSE</div>
+              <div className="w-24 shrink-0 text-right">MKT CAP</div>
+              <div className="w-20 shrink-0 text-center">CAP SIZE</div>
+              <div className="w-20 shrink-0 text-right">FLOAT</div>
+              <div className="w-20 shrink-0 text-right">SHORT %</div>
+              <div className="w-32 shrink-0 px-2">THEME</div>
+              <div className="w-32 shrink-0 px-2">INDUSTRY</div>
+              <div className="w-24 shrink-0 px-2">CATEGORY</div>
+              <div className="w-16 shrink-0 text-center">GRADE</div>
+              <div className="w-32 shrink-0 text-right">REV GWTH EST</div>
+              <div className="w-32 shrink-0 text-right">EPS GWTH EST</div>
+              <div className="flex-1 shrink-0 px-4">CATALYST</div>
             </div>
-          </ScrollArea>
+            <ScrollArea className="h-full">
+              <div className="min-w-[1800px] flex flex-col divide-y divide-border/50 pb-8">
+                {loading ? (
+                  Array(10).fill(0).map((_, i) => (
+                    <div key={i} className="flex px-3 py-2">
+                      <Skeleton className="h-4 w-full bg-muted/50" />
+                    </div>
+                  ))
+                ) : gappers.length === 0 ? (
+                  <div className="p-4 text-center text-muted-foreground">No active movers found.</div>
+                ) : (
+                  gappers.map((gapper, idx) => {
+                    const isUp = parseFloat(gapper.changePct) >= 0;
+                    return (
+                      <div key={idx} className="flex items-center px-3 py-2 hover:bg-muted/20 transition-colors text-xs">
+                        <div className="w-20 shrink-0 font-bold text-slate-200">{gapper.symbol}</div>
+                        <div className={cn("w-24 shrink-0 text-right font-medium", isUp ? "text-emerald-400" : "text-rose-400")}>
+                          {isUp ? '+' : ''}{gapper.changePct}%
+                        </div>
+                        <div className="w-24 shrink-0 text-right text-slate-400">{formatVolume(gapper.volume)}</div>
+                        <div className="w-24 shrink-0 text-right text-slate-400">{formatVolume(gapper.trade_count || gapper.volume * 8.5)}</div>
+                        <div className="w-20 shrink-0 text-right">${gapper.price.toFixed(2)}</div>
+                        <div className="w-24 shrink-0 text-right">${gapper.prevClose.toFixed(2)}</div>
+                        <div className="w-24 shrink-0 text-right text-slate-300">{gapper.mktCap || '--'}</div>
+                        <div className="w-20 shrink-0 text-center text-slate-400">{gapper.capSize || '--'}</div>
+                        <div className="w-20 shrink-0 text-right text-slate-300">{gapper.float || '--'}</div>
+                        <div className="w-20 shrink-0 text-right text-slate-300">{gapper.shortPct || '--'}</div>
+                        <div className="w-32 shrink-0 px-2 text-muted-foreground truncate" title={gapper.theme}>{gapper.theme || '--'}</div>
+                        <div className="w-32 shrink-0 px-2 text-muted-foreground truncate" title={gapper.industry}>{gapper.industry || '--'}</div>
+                        <div className="w-24 shrink-0 px-2 text-muted-foreground truncate" title={gapper.category}>{gapper.category || '--'}</div>
+                        <div className="w-16 shrink-0 flex justify-center">
+                          <Badge variant="outline" className={cn("px-1 py-0 h-5 text-[10px]", 
+                            gapper.grade === 'A' ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" :
+                            gapper.grade === 'B' ? "border-blue-500/30 text-blue-400 bg-blue-500/10" :
+                            "border-amber-500/30 text-amber-400 bg-amber-500/10"
+                          )}>
+                            {gapper.grade}
+                          </Badge>
+                        </div>
+                        <div className="w-32 shrink-0 text-right text-emerald-400/80">{gapper.revGrowth || '--'}</div>
+                        <div className="w-32 shrink-0 text-right text-emerald-400/80">{gapper.epsGrowth || '--'}</div>
+                        <div className="flex-1 shrink-0 px-4 text-slate-400 truncate" title={gapper.catalyst}>{gapper.catalyst || '--'}</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </ScrollArea>
+          </div>
         </div>
 
-        {/* Right Pane: Unified News Terminal */}
-        <div className="col-span-7 flex flex-col rounded-md border border-border bg-card/30">
+        {/* Bottom Pane: Unified News Terminal */}
+        <div className="flex h-[55%] flex-col rounded-md border border-border bg-card/30">
           <div className="flex items-center justify-between border-b border-border bg-muted/20 px-3 py-2">
             <div className="font-semibold uppercase flex items-center gap-2">
               <Newspaper className="h-4 w-4" />
