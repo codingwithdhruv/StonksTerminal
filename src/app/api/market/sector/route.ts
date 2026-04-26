@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { classifyTheme, formatGrowth } from '@/lib/market';
 import { fetchAlpacaAssets, AlpacaAsset } from '@/lib/alpaca-assets';
+import { getProfiles, getCatalysts } from '@/lib/finnhub-cache';
 
-const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
@@ -18,15 +18,6 @@ interface AlpacaSnapshot {
   latestTrade?: { p: number };
   dailyBar?: { c: number; v: number };
   prevDailyBar?: { c: number };
-}
-
-interface FinnhubProfile {
-  name?: string;
-  logo?: string;
-  marketCapitalization?: number;
-  shareOutstanding?: number;
-  finnhubIndustry?: string;
-  ticker?: string;
 }
 
 interface YFPreMarket {
@@ -195,36 +186,6 @@ async function fetchSAMetrics(symbols: string[]): Promise<
   return metrics;
 }
 
-/** Fetch latest news headline per symbol from Finnhub as live catalyst */
-async function fetchCatalysts(symbols: string[]): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
-  if (!FINNHUB_API_KEY) return result;
-
-  const today = new Date().toISOString().split('T')[0];
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-
-  for (let i = 0; i < symbols.length; i += 15) {
-    const batch = symbols.slice(i, i + 15);
-    const promises = batch.map(async (sym) => {
-      try {
-        const res = await axios.get(
-          `https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${weekAgo}&to=${today}&token=${FINNHUB_API_KEY}`,
-          { timeout: 5000 }
-        );
-        const news = res.data;
-        if (Array.isArray(news) && news.length > 0) return { symbol: sym, catalyst: news[0].headline || '' };
-        return { symbol: sym, catalyst: '' };
-      } catch {
-        return { symbol: sym, catalyst: '' };
-      }
-    });
-    const results = await Promise.all(promises);
-    for (const r of results) { if (r.catalyst) result[r.symbol] = r.catalyst; }
-    if (i + 15 < symbols.length) await new Promise(r => setTimeout(r, 300));
-  }
-  return result;
-}
-
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sector = searchParams.get('sector') || 'technology';
@@ -264,31 +225,8 @@ export async function GET(request: Request) {
     );
     const snapshots: Record<string, AlpacaSnapshot> = snapshotRes.data || {};
 
-    // 3. Fetch Finnhub profiles for all symbols (needed for industry-based filtering)
-    const profiles: Record<string, FinnhubProfile> = {};
-    if (FINNHUB_API_KEY) {
-      for (let i = 0; i < allSymbols.length; i += 15) {
-        const batch = allSymbols.slice(i, i + 15);
-        const results = await Promise.all(
-          batch.map(async (sym) => {
-            try {
-              const res = await axios.get(
-                `https://finnhub.io/api/v1/stock/profile2?symbol=${sym}&token=${FINNHUB_API_KEY}`,
-                { timeout: 5000 }
-              );
-              const d = res.data;
-              return { symbol: sym, profile: (d && d.ticker) ? d as FinnhubProfile : null };
-            } catch {
-              return { symbol: sym, profile: null };
-            }
-          })
-        );
-        for (const r of results) {
-          if (r.profile) profiles[r.symbol] = r.profile;
-        }
-        if (i + 15 < allSymbols.length) await new Promise(r => setTimeout(r, 200));
-      }
-    }
+    // 3. Fetch Finnhub profiles (cached 24h, throttled to respect 60/min limit)
+    const profiles = await getProfiles(allSymbols);
 
     // 4. Fetch Alpaca asset master (provides classification for warrants and industry guess as fallback)
     const alpacaAssets = await fetchAlpacaAssets(allSymbols);
@@ -311,8 +249,8 @@ export async function GET(request: Request) {
     // 6. Fetch SA metrics (graceful degradation on quota exceeded)
     const saMetrics = await fetchSAMetrics(sectorSymbols);
 
-    // 7. Fetch catalysts
-    const catalysts = await fetchCatalysts(sectorSymbols);
+    // 7. Fetch catalysts (cached 10min)
+    const catalysts = await getCatalysts(sectorSymbols);
 
     // 8. Fetch pre-market data + sparklines in parallel
     const [preMarketData, sparklines] = await Promise.all([

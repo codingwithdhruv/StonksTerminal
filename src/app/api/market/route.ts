@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { fetchDynamicEtfs, classifyTheme, formatGrowth } from '@/lib/market';
 import { fetchAlpacaAssets } from '@/lib/alpaca-assets';
+import { getProfiles, getCatalysts, FinnhubProfile } from '@/lib/finnhub-cache';
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
@@ -13,15 +14,6 @@ const alpacaHeaders = {
   'APCA-API-KEY-ID': ALPACA_API_KEY_ID || '',
   'APCA-API-SECRET-KEY': ALPACA_API_SECRET_KEY || '',
 };
-
-interface FinnhubProfile {
-  name?: string;
-  logo?: string;
-  marketCapitalization?: number;
-  shareOutstanding?: number;
-  finnhubIndustry?: string;
-  ticker?: string;
-}
 
 interface AlpacaSnapshot {
   latestTrade?: { p: number };
@@ -228,46 +220,6 @@ async function fetchSAMetrics(symbols: string[]): Promise<{
   return { metrics };
 }
 
-/** Fetch latest news headline per symbol from Finnhub as live catalyst */
-async function fetchCatalysts(symbols: string[]): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
-  if (!FINNHUB_API_KEY) return result;
-
-  // Fetch news headlines as live catalysts
-  const today = new Date().toISOString().split('T')[0];
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-
-  for (let i = 0; i < symbols.length; i += 15) {
-    const batch = symbols.slice(i, i + 15);
-    const promises = batch.map(async (sym) => {
-      try {
-        const res = await axios.get(
-          `https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${weekAgo}&to=${today}&token=${FINNHUB_API_KEY}`,
-          { timeout: 5000 }
-        );
-        const news = res.data;
-        if (Array.isArray(news) && news.length > 0) {
-          return { symbol: sym, catalyst: news[0].headline || '' };
-        }
-        return { symbol: sym, catalyst: '' };
-      } catch {
-        return { symbol: sym, catalyst: '' };
-      }
-    });
-
-    const results = await Promise.all(promises);
-    for (const r of results) {
-      if (r.catalyst) result[r.symbol] = r.catalyst;
-    }
-
-    // Rate limit delay between batches
-    if (i + 15 < symbols.length) {
-      await new Promise(r => setTimeout(r, 300));
-    }
-  }
-  return result;
-}
-
 export async function GET() {
   try {
     const etfSymbols = await getEtfSymbols();
@@ -318,33 +270,9 @@ export async function GET() {
       }
     }
 
-    // 3. Fetch Finnhub profiles (batch, skip ETFs)
+    // 3. Fetch Finnhub profiles (cached 24h, throttled to respect 60/min limit)
     const nonEtfSymbols = symbols.filter(s => !etfSymbols.has(s));
-    const profiles: Record<string, FinnhubProfile | null> = {};
-
-    if (FINNHUB_API_KEY) {
-      for (let i = 0; i < nonEtfSymbols.length; i += 15) {
-        const batch = nonEtfSymbols.slice(i, i + 15);
-        const batchResults = await Promise.all(
-          batch.map(async (sym) => {
-            try {
-              const res = await axios.get(
-                `https://finnhub.io/api/v1/stock/profile2?symbol=${sym}&token=${FINNHUB_API_KEY}`,
-                { timeout: 5000 }
-              );
-              const data = res.data;
-              return { symbol: sym, profile: (data && data.ticker) ? data as FinnhubProfile : null };
-            } catch {
-              return { symbol: sym, profile: null };
-            }
-          })
-        );
-        for (const r of batchResults) {
-          profiles[r.symbol] = r.profile;
-        }
-        if (i + 15 < nonEtfSymbols.length) await new Promise(r => setTimeout(r, 200));
-      }
-    }
+    const profiles = await getProfiles(nonEtfSymbols);
 
     // 4. Fetch SA metrics (SI%, rev growth, EPS growth, logos, marketCap fallback)
     const { metrics: saMetrics } = await fetchSAMetrics(nonEtfSymbols);
@@ -352,8 +280,8 @@ export async function GET() {
     // 4b. Fetch Alpaca asset master (provides name + classification for warrants/rights/units)
     const alpacaAssets = await fetchAlpacaAssets(symbols);
 
-    // 5. Fetch live catalysts for non-ETF stocks
-    const catalysts = await fetchCatalysts(nonEtfSymbols);
+    // 5. Fetch live catalysts (cached 10min)
+    const catalysts = await getCatalysts(nonEtfSymbols);
 
     // 6. Fetch pre-market data from Yahoo Finance for all symbols
     const preMarketData = await fetchPreMarketData(symbols);
