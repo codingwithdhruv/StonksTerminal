@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Activity, Newspaper, BrainCircuit, Filter, Clock, Globe, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NewsItem } from '@/lib/news';
 
 interface Gapper {
   symbol: string;
@@ -29,18 +30,6 @@ interface Gapper {
   catalyst?: string;
 }
 
-interface NewsItem {
-  id: string | number;
-  headline: string;
-  summary: string;
-  category: string;
-  categoryClass: string;
-  createdAt: string;
-  symbols: string[];
-  url: string;
-  source?: string;
-  imageUrl?: string;
-}
 
 interface TerminalDashboardProps {
   categorySlug?: string;

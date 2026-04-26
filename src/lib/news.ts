@@ -3,6 +3,7 @@
  * Enhanced to map news to both specific event types AND sector/theme categories
  * so category pages can filter effectively.
  */
+export const NEWS_PLACEHOLDER = '/images/news-placeholder.png';
 
 export type CategoryClass =
   | 'cat-earnings'
@@ -17,6 +18,20 @@ export type CategoryClass =
   | 'cat-macro'
   | 'cat-energy'
   | 'cat-others';
+
+export interface NewsItem {
+  id: string | number;
+  headline: string;
+  summary: string;
+  category: string;
+  categoryClass: CategoryClass;
+  createdAt: string;
+  symbols: string[];
+  url: string;
+  source: string;
+  imageUrl?: string;
+  _timestamp: number;
+}
 
 export function categorizeNews(headline: string, summary: string): CategoryClass {
   const text = `${headline} ${summary}`.toLowerCase();

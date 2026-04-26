@@ -3,7 +3,7 @@ import { GET as getAlpaca } from '@/app/api/news/route';
 import { GET as getFinnhub } from '@/app/api/finnhub/route';
 import { GET as getSeekingAlpha } from '@/app/api/seeking-alpha/route';
 import { GET as getYahooFinance } from '@/app/api/yahoo-finance/route';
-import { normalizeTimestamp } from '@/lib/news';
+import { normalizeTimestamp, NewsItem } from '@/lib/news';
 
 export async function GET(request: Request) {
   try {
@@ -16,42 +16,33 @@ export async function GET(request: Request) {
       getYahooFinance()
     ]);
 
-    interface LocalNewsItem {
-      id: string | number;
-      url?: string;
-      headline?: string;
-      source?: string;
-      createdAt: string;
-      [key: string]: unknown;
-    }
-
-    let allNews: LocalNewsItem[] = [];
+    let allNews: NewsItem[] = [];
 
     if (alpacaRes.status === 'fulfilled') {
       const data = await alpacaRes.value.json();
       if (data.data) {
-        allNews = allNews.concat(data.data.map((item: LocalNewsItem) => ({ ...item, source: item.source || 'Alpaca' })));
+        allNews = allNews.concat(data.data.map((item: NewsItem) => ({ ...item, source: item.source || 'Alpaca' })));
       }
     }
     
     if (finnhubRes.status === 'fulfilled') {
       const data = await finnhubRes.value.json();
       if (data.data) {
-        allNews = allNews.concat(data.data);
+        allNews = allNews.concat((data.data as NewsItem[]).map(item => ({ ...item, source: item.source || 'Finnhub' })));
       }
     }
 
     if (saRes.status === 'fulfilled') {
       const data = await saRes.value.json();
       if (data.data) {
-        allNews = allNews.concat(data.data);
+        allNews = allNews.concat((data.data as NewsItem[]).map(item => ({ ...item, source: item.source || 'Seeking Alpha' })));
       }
     }
 
     if (yfRes.status === 'fulfilled') {
       const data = await yfRes.value.json();
       if (data.data) {
-        allNews = allNews.concat(data.data);
+        allNews = allNews.concat((data.data as NewsItem[]).map(item => ({ ...item, source: item.source || 'Yahoo Finance' })));
       }
     }
 
@@ -69,25 +60,10 @@ export async function GET(request: Request) {
         if (urlKey) seenUrls.add(urlKey);
         if (headlineKey) seenHeadlines.add(headlineKey);
         return true;
-      })
-      .map(item => {
-        // If it already has _timestamp, use it. Otherwise normalize.
-        if (item._timestamp) {
-          return {
-            ...item,
-            _timestamp: Number(item._timestamp)
-          };
-        }
-        const { iso, unix } = normalizeTimestamp(item.createdAt);
-        return {
-          ...item,
-          createdAt: iso,
-          _timestamp: unix
-        };
       });
 
     // Sort strictly by normalized timestamp (newest first)
-    processedNews.sort((a, b) => (b._timestamp as number) - (a._timestamp as number));
+    processedNews.sort((a, b) => b._timestamp - a._timestamp);
 
     return NextResponse.json({ data: processedNews });  } catch (error) {
     console.error('Failed to fetch unified news:', error);

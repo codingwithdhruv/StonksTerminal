@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { categorizeNews, getCategoryLabel, normalizeTimestamp } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp, NewsItem, NEWS_PLACEHOLDER } from '@/lib/news';
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 
@@ -58,7 +58,9 @@ export async function GET() {
       url: string;
       symbols: string[];
       createdAt: string;
+      _timestamp: number;
       source: string;
+      imageUrl: string;
     }> = [];
 
     // Try the newer stream format first
@@ -83,7 +85,7 @@ export async function GET() {
             createdAt: normalizeTimestamp(c.pubDate || Date.now()).iso,
             _timestamp: normalizeTimestamp(c.pubDate || Date.now()).unix,
             source: c.provider?.displayName || 'Yahoo Finance',
-            imageUrl: bestThumb?.url || '/images/news-placeholder.png',
+            imageUrl: bestThumb?.url || NEWS_PLACEHOLDER,
           };
         });
     } else {
@@ -105,13 +107,13 @@ export async function GET() {
           createdAt: normalizeTimestamp(article.providerPublishTime ? article.providerPublishTime * 1000 : Date.now()).iso,
           _timestamp: normalizeTimestamp(article.providerPublishTime ? article.providerPublishTime * 1000 : Date.now()).unix,
           source: article.publisher || 'Yahoo Finance',
-          imageUrl: bestThumb?.url || '/images/news-placeholder.png',
+          imageUrl: bestThumb?.url || NEWS_PLACEHOLDER,
         };
       });
     }
 
     // Apply categorization
-    const categorizedNews = parsedNews.map((item) => {
+    const categorizedNews: NewsItem[] = parsedNews.map((item) => {
       const categoryClass = categorizeNews(item.headline, item.summary);
       return {
         ...item,

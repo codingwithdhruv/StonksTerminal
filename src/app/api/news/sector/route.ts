@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { categorizeNews, getCategoryLabel, normalizeTimestamp } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp, NewsItem, NEWS_PLACEHOLDER } from '@/lib/news';
 
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
@@ -56,17 +56,19 @@ export async function GET(request: Request) {
         imageUrl = article.images.find((i: any) => i.size === 'large')?.url || 
                    article.images.find((i: any) => i.size === 'small')?.url;
       }
+      const { iso, unix } = normalizeTimestamp(article.created_at);
       allNews.push({
         id: `alpaca-${article.id}`,
         headline: article.headline,
         summary: article.summary || '',
         url: article.url,
         symbols: article.symbols || [],
-        createdAt: article.created_at,
+        createdAt: iso,
+        _timestamp: unix,
         category: getCategoryLabel(cc),
         categoryClass: cc,
         source: article.source || 'Alpaca',
-        imageUrl: imageUrl || '/images/news-placeholder.png',
+        imageUrl: imageUrl || NEWS_PLACEHOLDER,
       });
     }
   } catch (e) {
@@ -109,17 +111,19 @@ export async function GET(request: Request) {
           if (sym && !syms.includes(sym)) syms.push(sym);
         }
 
+        const { iso, unix } = normalizeTimestamp(publishOn || Date.now());
         allNews.push({
           id: `sa-sector-${article.id}`,
           headline,
           summary: '',
           url: `https://seekingalpha.com${article.links?.self || ''}`,
           symbols: syms,
-          createdAt: publishOn ? new Date(publishOn).toISOString() : new Date().toISOString(),
+          createdAt: iso,
+          _timestamp: unix,
           category: getCategoryLabel(cc),
           categoryClass: cc,
           source: 'Seeking Alpha',
-          imageUrl: imageUrl || '/images/news-placeholder.png',
+          imageUrl: imageUrl || NEWS_PLACEHOLDER,
         });
       }
     } catch (e) {

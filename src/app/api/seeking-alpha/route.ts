@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { categorizeNews, getCategoryLabel, normalizeTimestamp } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp, NewsItem, NEWS_PLACEHOLDER } from '@/lib/news';
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 
@@ -106,7 +106,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const categorizedNews = allArticles.map((article) => {
+    const categorizedNews: NewsItem[] = allArticles.map((article) => {
       const headline = article.attributes?.title || '';
       const publishOn = article.attributes?.publishOn || '';
       const categoryClass = categorizeNews(headline, '');
@@ -134,7 +134,7 @@ export async function GET(request: Request) {
         category: getCategoryLabel(categoryClass),
         categoryClass,
         source: 'Seeking Alpha',
-        imageUrl,
+        imageUrl: imageUrl || NEWS_PLACEHOLDER,
       };
     });
 

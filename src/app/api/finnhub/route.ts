@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { categorizeNews, getCategoryLabel, normalizeTimestamp } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp, NewsItem, NEWS_PLACEHOLDER } from '@/lib/news';
 
 export const revalidate = 60; // Cache for 60 seconds
 
@@ -44,7 +44,7 @@ export async function GET() {
     // Map Finnhub response to our common NewsItem interface
     // Finnhub response shape: 
     // { category, datetime (seconds), headline, id, image, related (comma-separated), source, summary, url }
-    const formattedNews = data.slice(0, 100).map((item) => {
+    const formattedNews: NewsItem[] = data.slice(0, 100).map((item) => {
       const categoryClass = categorizeNews(item.headline, item.summary);
       return {
         id: `finnhub-${item.id}`,
@@ -59,7 +59,7 @@ export async function GET() {
         categoryClass: categoryClass,
         symbols: item.related ? item.related.split(',') : [],
         // Pass through Finnhub's image URL
-        imageUrl: item.image || '/images/news-placeholder.png',
+        imageUrl: item.image || NEWS_PLACEHOLDER,
       };
     });
 

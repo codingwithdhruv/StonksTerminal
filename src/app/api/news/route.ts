@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { categorizeNews, getCategoryLabel, normalizeTimestamp } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp, NewsItem, NEWS_PLACEHOLDER } from '@/lib/news';
 
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
 
     const allArticles = [...articles, ...moreArticles];
 
-    const categorizedNews = allArticles.map((article) => {
+    const categorizedNews: NewsItem[] = allArticles.map((article) => {
       const categoryClass = categorizeNews(article.headline, article.summary);
 
       // Extract best image: prefer "large" > "small" > "thumb"
@@ -79,7 +79,7 @@ export async function GET(request: Request) {
         category: getCategoryLabel(categoryClass),
         categoryClass,
         source: article.source || 'Alpaca',
-        imageUrl: imageUrl || '/images/news-placeholder.png',
+        imageUrl: imageUrl || NEWS_PLACEHOLDER,
       };
     });
 
