@@ -11,6 +11,7 @@ interface FinnhubNews {
   url: string;
   datetime: number;
   related?: string;
+  image?: string;
 }
 
 export async function GET() {
@@ -56,6 +57,8 @@ export async function GET() {
         category: getCategoryLabel(categoryClass),
         categoryClass: categoryClass,
         symbols: item.related ? item.related.split(',') : [],
+        // Pass through Finnhub's image URL
+        imageUrl: item.image || undefined,
       };
     });
 

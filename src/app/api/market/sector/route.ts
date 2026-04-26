@@ -65,10 +65,118 @@ function classifyTheme(industry: string, name: string): string {
   return industry || 'General';
 }
 
+/** Format growth values from SA get-metrics. Already in percentage form. */
+function formatGrowth(val: number | undefined | null): string {
+  if (val == null) return '--';
+  return (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
+}
+
 interface AlpacaSnapshot {
   latestTrade?: { p: number };
   dailyBar?: { c: number; v: number };
   prevDailyBar?: { c: number };
+}
+
+/** Fetch SA get-metrics for correct SI%, rev growth, EPS growth, logos, and mktCap */
+async function fetchSAMetrics(symbols: string[]): Promise<
+  Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string; saMktCap?: number; logo?: string }>
+> {
+  const metrics: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string; saMktCap?: number; logo?: string }> = {};
+  if (!RAPIDAPI_KEY || symbols.length === 0) return metrics;
+
+  const batches: string[][] = [];
+  for (let i = 0; i < symbols.length; i += 20) batches.push(symbols.slice(i, i + 20));
+
+  // get-data for mktCap fallback
+  for (const batch of batches) {
+    try {
+      const res = await axios.get(
+        `https://seeking-alpha.p.rapidapi.com/symbols/get-data?symbol=${batch.join(',')}&fields=marketCap`,
+        { headers: { 'x-rapidapi-key': RAPIDAPI_KEY, 'x-rapidapi-host': 'seeking-alpha.p.rapidapi.com' }, timeout: 10000 }
+      );
+      for (const item of (res.data?.data || [])) {
+        const sym = (item.id || '').toUpperCase();
+        if (sym) metrics[sym] = { saMktCap: item.attributes?.marketCap || undefined };
+      }
+    } catch { /* skip */ }
+  }
+
+  // get-metrics for SI%, rev growth, EPS growth, logos
+  for (const batch of batches) {
+    try {
+      const res = await axios.get(
+        `https://seeking-alpha.p.rapidapi.com/symbols/get-metrics?symbols=${batch.join(',')}&fields=short_interest_percent_of_float,revenue_growth,diluted_eps_growth`,
+        { headers: { 'x-rapidapi-key': RAPIDAPI_KEY, 'x-rapidapi-host': 'seeking-alpha.p.rapidapi.com' }, timeout: 12000 }
+      );
+
+      const tickerIdToSym: Record<string, string> = {};
+      const tickerLogos: Record<string, string> = {};
+      const metricTypeMap: Record<string, string> = {};
+
+      for (const inc of (res.data?.included || [])) {
+        if (inc.type === 'ticker' && inc.attributes?.name) {
+          const sym = inc.attributes.name.toUpperCase();
+          tickerIdToSym[inc.id] = sym;
+          const logo = inc.meta?.companyLogoUrlLight || inc.meta?.companyLogoUrlDark;
+          if (logo) tickerLogos[sym] = logo;
+        }
+        if (inc.type === 'metric_type') {
+          metricTypeMap[inc.id] = inc.attributes?.field || '';
+        }
+      }
+
+      for (const item of (res.data?.data || [])) {
+        const tickerId = item.relationships?.ticker?.data?.id;
+        const metricTypeId = item.relationships?.metric_type?.data?.id;
+        const sym = tickerIdToSym[tickerId];
+        const field = metricTypeMap[metricTypeId];
+        const value = item.attributes?.value;
+        if (!sym || !field || value == null) continue;
+
+        if (!metrics[sym]) metrics[sym] = {};
+        if (field === 'short_interest_percent_of_float') metrics[sym].shortPct = value.toFixed(1) + '%';
+        else if (field === 'revenue_growth') metrics[sym].revGrowth = formatGrowth(value);
+        else if (field === 'diluted_eps_growth') metrics[sym].epsGrowth = formatGrowth(value);
+      }
+
+      for (const [sym, logo] of Object.entries(tickerLogos)) {
+        if (!metrics[sym]) metrics[sym] = {};
+        metrics[sym].logo = logo;
+      }
+    } catch { /* skip */ }
+  }
+
+  return metrics;
+}
+
+/** Fetch latest news headline per symbol from Finnhub as live catalyst */
+async function fetchCatalysts(symbols: string[]): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  if (!FINNHUB_API_KEY) return result;
+
+  const today = new Date().toISOString().split('T')[0];
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+
+  for (let i = 0; i < symbols.length; i += 15) {
+    const batch = symbols.slice(i, i + 15);
+    const promises = batch.map(async (sym) => {
+      try {
+        const res = await axios.get(
+          `https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${weekAgo}&to=${today}&token=${FINNHUB_API_KEY}`,
+          { timeout: 5000 }
+        );
+        const news = res.data;
+        if (Array.isArray(news) && news.length > 0) return { symbol: sym, catalyst: news[0].headline || '' };
+        return { symbol: sym, catalyst: '' };
+      } catch {
+        return { symbol: sym, catalyst: '' };
+      }
+    });
+    const results = await Promise.all(promises);
+    for (const r of results) { if (r.catalyst) result[r.symbol] = r.catalyst; }
+    if (i + 15 < symbols.length) await new Promise(r => setTimeout(r, 300));
+  }
+  return result;
 }
 
 export async function GET(request: Request) {
@@ -89,41 +197,11 @@ export async function GET(request: Request) {
     );
     const snapshots: Record<string, AlpacaSnapshot> = snapshotRes.data || {};
 
-    // 2. Fetch SA get-data for fundamentals
-    let saData: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string; saMktCap?: number }> = {};
-    if (RAPIDAPI_KEY) {
-      try {
-        // Batch in groups of 20
-        for (let i = 0; i < tickers.length; i += 20) {
-          const batch = tickers.slice(i, i + 20);
-          const res = await axios.get(
-            `https://seeking-alpha.p.rapidapi.com/symbols/get-data?symbol=${batch.join(',')}&fields=short_interest_shares_outstanding,revenue_growth,eps,marketCap`,
-            {
-              headers: {
-                'x-rapidapi-key': RAPIDAPI_KEY,
-                'x-rapidapi-host': 'seeking-alpha.p.rapidapi.com',
-              },
-              timeout: 10000,
-            }
-          );
-          for (const item of (res.data?.data || [])) {
-            const sym = (item.id || '').toUpperCase();
-            const a = item.attributes || {};
-            saData[sym] = {
-              shortPct: a.shortInterestSharesOutstanding != null ? a.shortInterestSharesOutstanding.toFixed(1) + '%' : undefined,
-              revGrowth: a.revenueGrowth != null ? (Math.abs(a.revenueGrowth) < 1 ? (a.revenueGrowth * 100).toFixed(1) : a.revenueGrowth.toFixed(1)) + '%' : undefined,
-              epsGrowth: a.eps != null ? '$' + a.eps.toFixed(2) : undefined,
-              saMktCap: a.marketCap || undefined,
-            };
-          }
-        }
-      } catch (e) {
-        console.error('SA sector data error:', (e as Error).message);
-      }
-    }
+    // 2. Fetch SA metrics (SI%, rev growth, EPS growth, logos, mktCap)
+    const saMetrics = await fetchSAMetrics(tickers);
 
     // 3. Fetch Finnhub profiles (batch of 15 to respect rate limits)
-    const profiles: Record<string, { name?: string; mktCap?: number; shares?: number; industry?: string }> = {};
+    const profiles: Record<string, { name?: string; mktCap?: number; shares?: number; industry?: string; logo?: string }> = {};
     if (FINNHUB_API_KEY) {
       for (let i = 0; i < tickers.length; i += 15) {
         const batch = tickers.slice(i, i + 15);
@@ -136,7 +214,7 @@ export async function GET(request: Request) {
               );
               const d = res.data;
               if (d && d.ticker) {
-                return { symbol: sym, data: { name: d.name, mktCap: d.marketCapitalization, shares: d.shareOutstanding, industry: d.finnhubIndustry } };
+                return { symbol: sym, data: { name: d.name, mktCap: d.marketCapitalization, shares: d.shareOutstanding, industry: d.finnhubIndustry, logo: d.logo } };
               }
               return { symbol: sym, data: null };
             } catch {
@@ -151,10 +229,13 @@ export async function GET(request: Request) {
       }
     }
 
-    // 4. Build results
+    // 4. Fetch catalysts for all sector tickers
+    const catalysts = await fetchCatalysts(tickers);
+
+    // 5. Build results
     const stocks = tickers.map((sym) => {
       const snap = snapshots[sym];
-      const sa = saData[sym] || {};
+      const sa = saMetrics[sym] || {};
       const prof = profiles[sym];
 
       let price = 0, prevClose = 0, changePct = 0;
@@ -183,9 +264,11 @@ export async function GET(request: Request) {
         : '--';
       const industry = prof?.industry || '--';
       const theme = classifyTheme(industry, prof?.name || sym);
+      const logo = sa.logo || prof?.logo || undefined;
 
       return {
         symbol: sym,
+        logo,
         volume,
         trade_count: 0,
         price,
@@ -201,7 +284,7 @@ export async function GET(request: Request) {
         category: 'Stock',
         revGrowth: sa.revGrowth || '--',
         epsGrowth: sa.epsGrowth || '--',
-        catalyst: '--',
+        catalyst: catalysts[sym] || '--',
       };
     }).filter(Boolean);
 

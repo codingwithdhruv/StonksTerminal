@@ -13,6 +13,7 @@ interface YFStreamItem {
     provider?: { displayName?: string };
     clickThroughUrl?: { url?: string };
     finance?: { stockTickers?: Array<{ symbol?: string }> };
+    thumbnail?: { resolutions?: Array<{ url?: string; width?: number; height?: number }> };
   };
 }
 
@@ -24,6 +25,7 @@ interface YFArticleLegacy {
   link?: string;
   relatedTickers?: string[];
   publisher?: string;
+  thumbnail?: { resolutions?: Array<{ url?: string }> };
 }
 
 export async function GET() {
@@ -69,6 +71,9 @@ export async function GET() {
           const symbols = (c.finance?.stockTickers || [])
             .map((t) => t.symbol || '')
             .filter(Boolean);
+          // Pick the largest resolution thumbnail
+          const resolutions = c.thumbnail?.resolutions || [];
+          const bestThumb = resolutions.length > 0 ? resolutions[resolutions.length - 1] : undefined;
           return {
             id: c.id || Math.random().toString(36),
             headline: c.title || '',
@@ -77,6 +82,7 @@ export async function GET() {
             symbols,
             createdAt: c.pubDate ? new Date(c.pubDate).toISOString() : new Date().toISOString(),
             source: c.provider?.displayName || 'Yahoo Finance',
+            imageUrl: bestThumb?.url || undefined,
           };
         });
     } else {
@@ -86,17 +92,22 @@ export async function GET() {
         Array.isArray(newsRes.data?.data) ? newsRes.data.data :
         Array.isArray(newsRes.data) ? newsRes.data : [];
 
-      parsedNews = articles.slice(0, 30).map((article) => ({
-        id: article.uuid || Math.random().toString(36),
-        headline: article.title || '',
-        summary: article.summary || '',
-        url: article.link || '',
-        symbols: article.relatedTickers || [],
-        createdAt: article.providerPublishTime
-          ? new Date(article.providerPublishTime * 1000).toISOString()
-          : new Date().toISOString(),
-        source: article.publisher || 'Yahoo Finance',
-      }));
+      parsedNews = articles.slice(0, 30).map((article) => {
+        const resolutions = article.thumbnail?.resolutions || [];
+        const bestThumb = resolutions.length > 0 ? resolutions[resolutions.length - 1] : undefined;
+        return {
+          id: article.uuid || Math.random().toString(36),
+          headline: article.title || '',
+          summary: article.summary || '',
+          url: article.link || '',
+          symbols: article.relatedTickers || [],
+          createdAt: article.providerPublishTime
+            ? new Date(article.providerPublishTime * 1000).toISOString()
+            : new Date().toISOString(),
+          source: article.publisher || 'Yahoo Finance',
+          imageUrl: bestThumb?.url || undefined,
+        };
+      });
     }
 
     // Apply categorization

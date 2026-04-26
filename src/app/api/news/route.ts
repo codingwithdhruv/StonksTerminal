@@ -11,6 +11,11 @@ const headers = {
   'APCA-API-SECRET-KEY': ALPACA_API_SECRET_KEY,
 };
 
+interface AlpacaNewsImage {
+  size: string;
+  url: string;
+}
+
 interface AlpacaNews {
   id: number;
   headline: string;
@@ -19,6 +24,7 @@ interface AlpacaNews {
   source: string;
   symbols: string[];
   created_at: string;
+  images?: AlpacaNewsImage[];
 }
 
 // GET handler
@@ -52,6 +58,16 @@ export async function GET(request: Request) {
 
     const categorizedNews = allArticles.map((article) => {
       const categoryClass = categorizeNews(article.headline, article.summary);
+
+      // Extract best image: prefer "large" > "small" > "thumb"
+      let imageUrl: string | undefined;
+      if (article.images && article.images.length > 0) {
+        const large = article.images.find(i => i.size === 'large');
+        const small = article.images.find(i => i.size === 'small');
+        const thumb = article.images.find(i => i.size === 'thumb');
+        imageUrl = large?.url || small?.url || thumb?.url;
+      }
+
       return {
         id: article.id,
         headline: article.headline,
@@ -62,6 +78,7 @@ export async function GET(request: Request) {
         category: getCategoryLabel(categoryClass),
         categoryClass,
         source: article.source || 'Alpaca',
+        imageUrl,
       };
     });
 

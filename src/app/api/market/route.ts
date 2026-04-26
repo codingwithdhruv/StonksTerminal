@@ -14,6 +14,7 @@ const alpacaHeaders = {
 
 interface FinnhubProfile {
   name?: string;
+  logo?: string;
   marketCapitalization?: number;
   shareOutstanding?: number;
   finnhubIndustry?: string;
@@ -32,7 +33,7 @@ const KNOWN_ETFS = new Set([
   'LABU','LABD','ARKK','TNA','TZA','FAS','FAZ','DUST','NUGT','JNUG',
   'JDST','TECL','TECS','FNGU','FNGD','UPRO','SDOW','UDOW','SH','SDS',
   'SSO','VOO','VTI','DIA','XLF','XLK','XLE','XLV','XLI','XLRE','XLC',
-  'XLY','XLP','XLB','XLU','UVIX','TSLL','TSLG',
+  'XLY','XLP','XLB','XLU','UVIX','TSLL','TSLG','NVD','NVDL','SOXL',
 ]);
 
 function classifyTheme(industry: string, name: string): string {
@@ -54,62 +55,119 @@ function classifyTheme(industry: string, name: string): string {
   return industry || 'General';
 }
 
-/**
- * Fetch Seeking Alpha get-data for fundamentals.
- * This endpoint returns FLAT attributes: { revenueGrowth, eps, marketCap, shortInterestSharesOutstanding }
- */
-async function fetchSAData(symbols: string[]): Promise<Record<string, {
-  shortPct?: string;
-  revGrowth?: string;
-  epsGrowth?: string;
-  saMktCap?: number;
-}>> {
-  const result: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string; saMktCap?: number }> = {};
-  if (!RAPIDAPI_KEY || symbols.length === 0) return result;
+/** Format revenue/eps growth. SA returns percentage values (10.07 = 10.07%, -0.4671 = -46.71%) */
+function formatGrowth(val: number | undefined | null): string {
+  if (val == null) return '--';
+  // SA get-metrics returns values like 10.071 meaning 10.07%, -84.9 meaning -84.9%
+  // Values are already in percentage form
+  return (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
+}
 
-  // SA get-data accepts comma-separated symbols, max ~25 at a time
+/**
+ * Fetch SA get-metrics for SI%, rev growth, EPS growth, and stock logos.
+ * get-metrics returns complex JSON-API with metric_type IDs:
+ *   - 234857 = short_interest_percent_of_float
+ *   - 36 = revenue_growth  
+ *   - 10 = diluted_eps_growth
+ * It also returns company logos in the `included` tickers.
+ */
+async function fetchSAMetrics(symbols: string[]): Promise<{
+  metrics: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string; saMktCap?: number; logo?: string }>;
+}> {
+  const metrics: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string; saMktCap?: number; logo?: string }> = {};
+  if (!RAPIDAPI_KEY || symbols.length === 0) return { metrics };
+
+  // Step 1: get-data for marketCap (flat, simple)
   const batches: string[][] = [];
   for (let i = 0; i < symbols.length; i += 20) {
     batches.push(symbols.slice(i, i + 20));
   }
-
   for (const batch of batches) {
     try {
-      const symbolStr = batch.join(',');
       const res = await axios.get(
-        `https://seeking-alpha.p.rapidapi.com/symbols/get-data?symbol=${symbolStr}&fields=short_interest_shares_outstanding,revenue_growth,eps,marketCap`,
+        `https://seeking-alpha.p.rapidapi.com/symbols/get-data?symbol=${batch.join(',')}&fields=marketCap`,
         {
-          headers: {
-            'x-rapidapi-key': RAPIDAPI_KEY,
-            'x-rapidapi-host': 'seeking-alpha.p.rapidapi.com',
-          },
+          headers: { 'x-rapidapi-key': RAPIDAPI_KEY, 'x-rapidapi-host': 'seeking-alpha.p.rapidapi.com' },
           timeout: 10000,
         }
       );
-
-      const items = res.data?.data || [];
-      for (const item of items) {
+      for (const item of (res.data?.data || [])) {
         const sym = (item.id || '').toUpperCase();
         if (!sym) continue;
         const a = item.attributes || {};
-
-        const shortRaw = a.shortInterestSharesOutstanding;
-        const revRaw = a.revenueGrowth;
-        const epsRaw = a.eps;
-        const mktCapRaw = a.marketCap;
-
-        result[sym] = {
-          shortPct: shortRaw != null ? shortRaw.toFixed(1) + '%' : undefined,
-          revGrowth: revRaw != null ? (revRaw > 100 ? revRaw.toFixed(1) + '%' : (revRaw * (Math.abs(revRaw) < 1 ? 100 : 1)).toFixed(1) + '%') : undefined,
-          epsGrowth: epsRaw != null ? '$' + epsRaw.toFixed(2) : undefined,
-          saMktCap: mktCapRaw || undefined,
-        };
+        metrics[sym] = { saMktCap: a.marketCap || undefined };
       }
     } catch (e) {
-      console.error('SA get-data batch error:', (e as Error).message);
+      console.error('SA get-data error:', (e as Error).message);
     }
   }
-  return result;
+
+  // Step 2: get-metrics for SI%, rev growth, EPS growth, and logos
+  // Need to batch by symbols — get-metrics takes comma-separated symbols
+  for (const batch of batches) {
+    try {
+      const res = await axios.get(
+        `https://seeking-alpha.p.rapidapi.com/symbols/get-metrics?symbols=${batch.join(',')}&fields=short_interest_percent_of_float,revenue_growth,diluted_eps_growth`,
+        {
+          headers: { 'x-rapidapi-key': RAPIDAPI_KEY, 'x-rapidapi-host': 'seeking-alpha.p.rapidapi.com' },
+          timeout: 12000,
+        }
+      );
+
+      // Build ticker ID -> symbol and logo mapping from `included`
+      const tickerIdToSym: Record<string, string> = {};
+      const tickerLogos: Record<string, string> = {};
+      for (const inc of (res.data?.included || [])) {
+        if (inc.type === 'ticker' && inc.attributes?.name) {
+          const sym = inc.attributes.name.toUpperCase();
+          tickerIdToSym[inc.id] = sym;
+          // Extract logo from meta
+          const logoUrl = inc.meta?.companyLogoUrlLight || inc.meta?.companyLogoUrlDark;
+          if (logoUrl) tickerLogos[sym] = logoUrl;
+        }
+      }
+
+      // Build metric_type ID -> field name mapping
+      const metricTypeMap: Record<string, string> = {};
+      for (const inc of (res.data?.included || [])) {
+        if (inc.type === 'metric_type') {
+          metricTypeMap[inc.id] = inc.attributes?.field || '';
+        }
+      }
+
+      // Parse metrics
+      for (const item of (res.data?.data || [])) {
+        const tickerId = item.relationships?.ticker?.data?.id;
+        const metricTypeId = item.relationships?.metric_type?.data?.id;
+        const sym = tickerIdToSym[tickerId];
+        const field = metricTypeMap[metricTypeId];
+        const value = item.attributes?.value;
+
+        if (!sym || !field || value == null) continue;
+
+        if (!metrics[sym]) metrics[sym] = {};
+
+        if (field === 'short_interest_percent_of_float') {
+          metrics[sym].shortPct = value.toFixed(1) + '%';
+        } else if (field === 'revenue_growth') {
+          metrics[sym].revGrowth = formatGrowth(value);
+        } else if (field === 'diluted_eps_growth') {
+          metrics[sym].epsGrowth = formatGrowth(value);
+        }
+      }
+
+      // Apply logos
+      for (const [sym, logo] of Object.entries(tickerLogos)) {
+        if (!metrics[sym]) metrics[sym] = {};
+        metrics[sym].logo = logo;
+      }
+
+    } catch (e) {
+      console.error('SA get-metrics error:', (e as Error).message);
+    }
+  }
+
+  return { metrics };
 }
 
 /** Fetch latest news headline per symbol from Finnhub as live catalyst */
@@ -117,29 +175,38 @@ async function fetchCatalysts(symbols: string[]): Promise<Record<string, string>
   const result: Record<string, string> = {};
   if (!FINNHUB_API_KEY) return result;
 
-  const stockSymbols = symbols.filter(s => !KNOWN_ETFS.has(s)).slice(0, 15);
+  // Fetch for ALL non-ETF symbols, in batches of 15 to respect rate limits
+  const stockSymbols = symbols.filter(s => !KNOWN_ETFS.has(s));
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
-  const promises = stockSymbols.map(async (sym) => {
-    try {
-      const res = await axios.get(
-        `https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${weekAgo}&to=${today}&token=${FINNHUB_API_KEY}`,
-        { timeout: 5000 }
-      );
-      const news = res.data;
-      if (Array.isArray(news) && news.length > 0) {
-        return { symbol: sym, catalyst: news[0].headline || '' };
+  for (let i = 0; i < stockSymbols.length; i += 15) {
+    const batch = stockSymbols.slice(i, i + 15);
+    const promises = batch.map(async (sym) => {
+      try {
+        const res = await axios.get(
+          `https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${weekAgo}&to=${today}&token=${FINNHUB_API_KEY}`,
+          { timeout: 5000 }
+        );
+        const news = res.data;
+        if (Array.isArray(news) && news.length > 0) {
+          return { symbol: sym, catalyst: news[0].headline || '' };
+        }
+        return { symbol: sym, catalyst: '' };
+      } catch {
+        return { symbol: sym, catalyst: '' };
       }
-      return { symbol: sym, catalyst: '' };
-    } catch {
-      return { symbol: sym, catalyst: '' };
-    }
-  });
+    });
 
-  const results = await Promise.all(promises);
-  for (const r of results) {
-    if (r.catalyst) result[r.symbol] = r.catalyst;
+    const results = await Promise.all(promises);
+    for (const r of results) {
+      if (r.catalyst) result[r.symbol] = r.catalyst;
+    }
+
+    // Rate limit delay between batches
+    if (i + 15 < stockSymbols.length) {
+      await new Promise(r => setTimeout(r, 300));
+    }
   }
   return result;
 }
@@ -166,39 +233,30 @@ export async function GET() {
     if (moversRes.status === 'fulfilled') {
       for (const s of (moversRes.value.data.gainers || [])) {
         symbolSet.add(s.symbol);
-        if (!volumeMap.has(s.symbol)) {
-          volumeMap.set(s.symbol, { volume: 0, trade_count: 0 });
-        }
+        if (!volumeMap.has(s.symbol)) volumeMap.set(s.symbol, { volume: 0, trade_count: 0 });
       }
       for (const s of (moversRes.value.data.losers || [])) {
         symbolSet.add(s.symbol);
-        if (!volumeMap.has(s.symbol)) {
-          volumeMap.set(s.symbol, { volume: 0, trade_count: 0 });
-        }
+        if (!volumeMap.has(s.symbol)) volumeMap.set(s.symbol, { volume: 0, trade_count: 0 });
       }
     }
 
     const symbols = Array.from(symbolSet);
-    if (symbols.length === 0) {
-      return NextResponse.json({ data: [] });
-    }
+    if (symbols.length === 0) return NextResponse.json({ data: [] });
 
-    // 2. Get snapshots for ALL symbols
-    const symbolsStr = symbols.join(',');
+    // 2. Get snapshots
     const snapshotRes = await axios.get(
-      `${ALPACA_DATA_URL}/v2/stocks/snapshots?symbols=${symbolsStr}&feed=iex`,
+      `${ALPACA_DATA_URL}/v2/stocks/snapshots?symbols=${symbols.join(',')}&feed=iex`,
       { headers: alpacaHeaders }
     );
     const snapshots: Record<string, AlpacaSnapshot> = snapshotRes.data || {};
 
-    // Update volumes from snapshots for symbols that came from movers
+    // Update volumes from snapshots for movers
     for (const sym of symbols) {
       const snap = snapshots[sym];
       if (snap?.dailyBar?.v && volumeMap.has(sym)) {
         const existing = volumeMap.get(sym)!;
-        if (existing.volume === 0) {
-          volumeMap.set(sym, { volume: snap.dailyBar.v, trade_count: existing.trade_count });
-        }
+        if (existing.volume === 0) volumeMap.set(sym, { volume: snap.dailyBar.v, trade_count: existing.trade_count });
       }
     }
 
@@ -207,7 +265,6 @@ export async function GET() {
     const profiles: Record<string, FinnhubProfile | null> = {};
 
     if (FINNHUB_API_KEY) {
-      // Fetch in batches of 15 to respect rate limits (30/sec free tier)
       for (let i = 0; i < nonEtfSymbols.length; i += 15) {
         const batch = nonEtfSymbols.slice(i, i + 15);
         const batchResults = await Promise.all(
@@ -227,65 +284,49 @@ export async function GET() {
         for (const r of batchResults) {
           profiles[r.symbol] = r.profile;
         }
-        // Small delay between batches to stay under rate limit
-        if (i + 15 < nonEtfSymbols.length) {
-          await new Promise(r => setTimeout(r, 200));
-        }
+        if (i + 15 < nonEtfSymbols.length) await new Promise(r => setTimeout(r, 200));
       }
     }
 
-    // 4. Fetch SA data for fundamentals (short interest, rev growth, eps, marketCap fallback)
-    const saData = await fetchSAData(nonEtfSymbols);
+    // 4. Fetch SA metrics (SI%, rev growth, EPS growth, logos, marketCap fallback)
+    const { metrics: saMetrics } = await fetchSAMetrics(nonEtfSymbols);
 
-    // 5. Fetch live catalysts
+    // 5. Fetch live catalysts for ALL stocks
     const catalysts = await fetchCatalysts(symbols);
 
     // 6. Build gappers array
     const gappers = symbols.map((sym) => {
       const snap = snapshots[sym];
       const prof = profiles[sym] || null;
-      const sa = saData[sym] || {};
+      const sa = saMetrics[sym] || {};
       const isEtf = KNOWN_ETFS.has(sym);
       const vol = volumeMap.get(sym) || { volume: 0, trade_count: 0 };
 
-      let price = 0;
-      let prevClose = 0;
-      let changePct = 0;
-
+      let price = 0, prevClose = 0, changePct = 0;
       if (snap) {
         price = snap.latestTrade?.p || snap.dailyBar?.c || 0;
         prevClose = snap.prevDailyBar?.c || price;
-        if (prevClose > 0) {
-          changePct = ((price - prevClose) / prevClose) * 100;
-        }
+        if (prevClose > 0) changePct = ((price - prevClose) / prevClose) * 100;
       }
-
-      // Skip symbols with no price data
       if (price === 0) return null;
 
-      // Volume from snapshot if not from screener
       const volume = vol.volume || snap?.dailyBar?.v || 0;
 
-      // Grade
       let grade = 'D';
       if (Math.abs(changePct) > 10 && volume > 500000) grade = 'A';
       else if (Math.abs(changePct) > 5 && volume > 100000) grade = 'B';
       else if (Math.abs(changePct) > 2) grade = 'C';
 
-      // Market cap: prefer Finnhub (in millions), fallback to SA (in raw dollars)
-      let mktCapDisplay = '--';
-      let mktCapVal = 0; // in millions for size classification
+      // Market cap
+      let mktCapVal = 0;
       if (prof?.marketCapitalization && prof.marketCapitalization > 0) {
         mktCapVal = prof.marketCapitalization;
       } else if (sa.saMktCap && sa.saMktCap > 0) {
-        mktCapVal = sa.saMktCap / 1000000; // SA returns raw dollars
+        mktCapVal = sa.saMktCap / 1000000;
       }
-
-      if (mktCapVal > 0) {
-        mktCapDisplay = mktCapVal >= 1000 ? (mktCapVal / 1000).toFixed(2) + 'B' : mktCapVal.toFixed(0) + 'M';
-      } else if (isEtf) {
-        mktCapDisplay = 'ETF';
-      }
+      const mktCapDisplay = mktCapVal > 0
+        ? (mktCapVal >= 1000 ? (mktCapVal / 1000).toFixed(2) + 'B' : mktCapVal.toFixed(0) + 'M')
+        : (isEtf ? 'ETF' : '--');
 
       const capSize = mktCapVal > 0
         ? (mktCapVal > 200000 ? 'Mega' : mktCapVal > 10000 ? 'Large' : mktCapVal > 2000 ? 'Mid' : mktCapVal > 300 ? 'Small' : 'Micro')
@@ -299,16 +340,14 @@ export async function GET() {
       const theme = classifyTheme(industry, prof?.name || sym);
       const category = isEtf ? 'ETF' : (prof?.finnhubIndustry ? 'Stock' : '--');
 
-      // SA live data
-      const shortPct = sa.shortPct || '--';
-      const revGrowth = sa.revGrowth || '--';
-      const epsGrowth = sa.epsGrowth || '--';
+      const catalyst = catalysts[sym] || (isEtf ? `Leveraged/Inverse ETF tracking ${theme}` : '--');
 
-      // Live catalyst
-      const catalyst = catalysts[sym] || (isEtf ? `Leveraged/Inverse ETF tracking ${theme} sector` : '--');
+      // Logo: prefer SA logo, fallback to Finnhub logo
+      const logo = sa.logo || prof?.logo || undefined;
 
       return {
         symbol: sym,
+        logo,
         volume,
         trade_count: vol.trade_count,
         price,
@@ -318,17 +357,16 @@ export async function GET() {
         mktCap: mktCapDisplay,
         capSize,
         float,
-        shortPct,
+        shortPct: sa.shortPct || '--',
         theme,
         industry,
         category,
-        revGrowth,
-        epsGrowth,
+        revGrowth: sa.revGrowth || '--',
+        epsGrowth: sa.epsGrowth || '--',
         catalyst,
       };
     }).filter(Boolean);
 
-    // Sort by absolute change %
     gappers.sort((a, b) => Math.abs(parseFloat(b!.changePct)) - Math.abs(parseFloat(a!.changePct)));
 
     return NextResponse.json({ data: gappers }, {

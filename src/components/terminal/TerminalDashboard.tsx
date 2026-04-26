@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 
 interface Gapper {
   symbol: string;
+  logo?: string;
   price: number;
   prevClose: number;
   changePct: string;
@@ -38,6 +39,7 @@ interface NewsItem {
   symbols: string[];
   url: string;
   source?: string;
+  imageUrl?: string;
 }
 
 interface TerminalDashboardProps {
@@ -203,7 +205,12 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                     const isUp = parseFloat(g.changePct) >= 0;
                     return (
                       <div key={idx} className="flex items-center px-3 py-1 hover:bg-muted/20 transition-colors text-[11px]">
-                        <div className="w-16 shrink-0 font-bold text-slate-200">{g.symbol}</div>
+                        <div className="w-16 shrink-0 font-bold text-slate-200 flex items-center gap-1">
+                          {g.logo && (
+                            <img src={g.logo} alt="" className="h-3.5 w-3.5 rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          )}
+                          {g.symbol}
+                        </div>
                         <div className={cn("w-20 shrink-0 text-right font-semibold", isUp ? "text-emerald-400" : "text-rose-400")}>
                           {isUp ? '+' : ''}{g.changePct}%
                         </div>
@@ -228,9 +235,15 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                             {g.grade}
                           </Badge>
                         </div>
-                        <div className={cn("w-20 shrink-0 text-right", g.revGrowth !== '--' ? "text-emerald-400/80" : "text-slate-500")}>{g.revGrowth || '--'}</div>
-                        <div className={cn("w-20 shrink-0 text-right", g.epsGrowth !== '--' ? "text-emerald-400/80" : "text-slate-500")}>{g.epsGrowth || '--'}</div>
-                        <div className="flex-1 shrink-0 px-2 text-slate-400 truncate" title={g.catalyst}>{g.catalyst || '--'}</div>
+                        <div className={cn("w-20 shrink-0 text-right",
+                          g.revGrowth === '--' ? "text-slate-500" :
+                          g.revGrowth?.startsWith('+') ? "text-emerald-400" : "text-rose-400"
+                        )}>{g.revGrowth || '--'}</div>
+                        <div className={cn("w-20 shrink-0 text-right",
+                          g.epsGrowth === '--' ? "text-slate-500" :
+                          g.epsGrowth?.startsWith('+') ? "text-emerald-400" : "text-rose-400"
+                        )}>{g.epsGrowth || '--'}</div>
+                        <div className="w-[300px] max-w-[300px] shrink-0 px-2 text-slate-400 truncate" title={g.catalyst}>{g.catalyst || '--'}</div>
                       </div>
                     );
                   })
@@ -293,36 +306,49 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                     href={item.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex flex-col gap-1 p-2 sm:p-3 hover:bg-muted/10 transition-colors group"
+                    className="flex gap-3 p-2 sm:p-3 hover:bg-muted/10 transition-colors group"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 sm:gap-2 shrink-0">
-                        <Globe className="h-3 w-3 hidden sm:block" />
-                        {item.source || 'News'} • {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
-                        {item.symbols && item.symbols.length > 0 && (
-                          <div className="flex gap-0.5 sm:gap-1">
-                            {item.symbols.slice(0, 3).map(sym => (
-                              <Badge key={sym} variant="outline" className="text-[9px] sm:text-[10px] h-4 px-1 rounded-sm border-muted-foreground/30">
-                                {sym}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                        <Badge variant="outline" className={cn("text-[9px] sm:text-[10px] h-4 px-1 rounded-sm", item.categoryClass)}>
-                          {item.category}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="font-medium text-slate-200 group-hover:text-primary transition-colors text-xs sm:text-sm">
-                      {item.headline}
-                    </div>
-                    {item.summary && (
-                      <div className="text-[10px] sm:text-xs text-slate-400 line-clamp-2 mt-0.5">
-                        {item.summary}
+                    {/* News thumbnail */}
+                    {item.imageUrl && (
+                      <div className="hidden sm:block shrink-0 w-20 h-14 rounded overflow-hidden bg-muted/30">
+                        <img
+                          src={item.imageUrl}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
+                        />
                       </div>
                     )}
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 sm:gap-2 shrink-0">
+                          <Globe className="h-3 w-3 hidden sm:block" />
+                          {item.source || 'News'} • {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
+                          {item.symbols && item.symbols.length > 0 && (
+                            <div className="flex gap-0.5 sm:gap-1">
+                              {item.symbols.slice(0, 3).map(sym => (
+                                <Badge key={sym} variant="outline" className="text-[9px] sm:text-[10px] h-4 px-1 rounded-sm border-muted-foreground/30">
+                                  {sym}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                          <Badge variant="outline" className={cn("text-[9px] sm:text-[10px] h-4 px-1 rounded-sm", item.categoryClass)}>
+                            {item.category}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="font-medium text-slate-200 group-hover:text-primary transition-colors text-xs sm:text-sm">
+                        {item.headline}
+                      </div>
+                      {item.summary && (
+                        <div className="text-[10px] sm:text-xs text-slate-400 line-clamp-2 mt-0.5">
+                          {item.summary}
+                        </div>
+                      )}
+                    </div>
                   </a>
                 ))
               )}

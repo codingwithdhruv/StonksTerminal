@@ -14,6 +14,7 @@ interface SANewsItem {
   };
   links?: {
     self?: string;
+    uriImage?: string;
   };
   relationships?: {
     primaryTickers?: {
@@ -119,6 +120,9 @@ export async function GET(request: Request) {
         if (sym && !syms.includes(sym)) syms.push(sym);
       }
 
+      // Extract image: prefer gettyImageUrl, fallback to uriImage
+      const imageUrl = article.attributes?.gettyImageUrl || article.links?.uriImage || undefined;
+
       return {
         id: `sa-${article.id}`,
         headline,
@@ -129,6 +133,7 @@ export async function GET(request: Request) {
         category: getCategoryLabel(categoryClass),
         categoryClass,
         source: 'Seeking Alpha',
+        imageUrl,
       };
     });
 

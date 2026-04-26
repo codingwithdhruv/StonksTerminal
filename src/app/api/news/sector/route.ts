@@ -44,6 +44,7 @@ interface NewsItem {
   category: string;
   categoryClass: string;
   source: string;
+  imageUrl?: string;
 }
 
 export async function GET(request: Request) {
@@ -66,6 +67,14 @@ export async function GET(request: Request) {
     );
     for (const article of (res.data.news || [])) {
       const cc = categorizeNews(article.headline, article.summary);
+      // Extract best image from Alpaca images array
+      let imageUrl: string | undefined;
+      if (article.images && article.images.length > 0) {
+        const large = article.images.find((i: { size: string; url: string }) => i.size === 'large');
+        const small = article.images.find((i: { size: string; url: string }) => i.size === 'small');
+        const thumb = article.images.find((i: { size: string; url: string }) => i.size === 'thumb');
+        imageUrl = large?.url || small?.url || thumb?.url;
+      }
       allNews.push({
         id: `alpaca-${article.id}`,
         headline: article.headline,
@@ -76,6 +85,7 @@ export async function GET(request: Request) {
         category: getCategoryLabel(cc),
         categoryClass: cc,
         source: article.source || 'Alpaca',
+        imageUrl,
       });
     }
   } catch (e) {
@@ -111,6 +121,7 @@ export async function GET(request: Request) {
         const headline = article.attributes?.title || '';
         const publishOn = article.attributes?.publishOn || '';
         const cc = categorizeNews(headline, '');
+        const imageUrl = article.attributes?.gettyImageUrl || article.links?.uriImage || undefined;
 
         const syms: string[] = [];
         for (const t of [...(article.relationships?.primaryTickers?.data || []), ...(article.relationships?.secondaryTickers?.data || [])]) {
@@ -128,6 +139,7 @@ export async function GET(request: Request) {
           category: getCategoryLabel(cc),
           categoryClass: cc,
           source: 'Seeking Alpha',
+          imageUrl,
         });
       }
     } catch (e) {
@@ -152,6 +164,7 @@ export async function GET(request: Request) {
           const headline = article.attributes?.title || '';
           const publishOn = article.attributes?.publishOn || '';
           const cc = categorizeNews(headline, '');
+          const imageUrl = article.attributes?.gettyImageUrl || undefined;
           allNews.push({
             id: `sa-sym-${article.id}`,
             headline,
@@ -162,6 +175,7 @@ export async function GET(request: Request) {
             category: getCategoryLabel(cc),
             categoryClass: cc,
             source: 'Seeking Alpha',
+            imageUrl,
           });
         }
       }
