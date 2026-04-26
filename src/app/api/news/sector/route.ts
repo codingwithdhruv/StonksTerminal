@@ -12,7 +12,6 @@ const alpacaHeaders = {
   'APCA-API-SECRET-KEY': ALPACA_API_SECRET_KEY || '',
 };
 
-import { fetchSectorTickers } from '@/lib/market';
 
 // SA news categories per sector
 const SA_NEWS_CATEGORIES: Record<string, string> = {
@@ -29,32 +28,49 @@ const SA_NEWS_CATEGORIES: Record<string, string> = {
   earnings: 'earnings::earnings-news',
 };
 
+/** Map sector slug to Alpaca news search keywords */
+const SECTOR_KEYWORDS: Record<string, string[]> = {
+  technology: ['nvidia', 'amd', 'apple', 'microsoft', 'google', 'meta', 'tech', 'semiconductor', 'software'],
+  healthcare: ['fda', 'biotech', 'pharma', 'drug', 'clinical', 'health', 'medical'],
+  macro: ['fed', 'inflation', 'gdp', 'rate', 'treasury', 'powell', 'fomc', 'recession'],
+  financials: ['bank', 'jpmorgan', 'goldman', 'wells fargo', 'citigroup', 'financial'],
+  communications: ['comcast', 'disney', 'netflix', 'verizon', 'at&t', 'media'],
+  energy: ['oil', 'gas', 'opec', 'crude', 'energy', 'renewable', 'solar'],
+  utilities: ['utility', 'electric', 'power'],
+  realestate: ['real estate', 'reit', 'housing'],
+  crypto: ['bitcoin', 'ethereum', 'crypto', 'blockchain', 'coinbase', 'mara'],
+  fda: ['fda', 'clinical', 'trial', 'approval', 'drug'],
+  earnings: ['earnings', 'revenue', 'guidance', 'beat', 'miss'],
+};
+
+function matchesNewsKeywords(text: string, sector: string): boolean {
+  const kws = SECTOR_KEYWORDS[sector.toLowerCase()] || [];
+  if (kws.length === 0) return true;
+  const lower = text.toLowerCase();
+  return kws.some(kw => lower.includes(kw));
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sector = searchParams.get('sector') || 'technology';
 
-  // 0. Fetch dynamic tickers for this sector
-  const tickers = await fetchSectorTickers(sector);
-  if (!tickers || tickers.length === 0) {
-    // Fallback if screener fails
-    return NextResponse.json({ error: `No tickers available for sector: ${sector}` }, { status: 404 });
-  }
-
   const allNews: NewsItem[] = [];
 
-  // 1. Fetch Alpaca news for sector tickers
+  // 1. Fetch general Alpaca news (top 50 latest), filter by keywords matching sector
   try {
-    const symbolsStr = tickers.slice(0, 30).join(','); // Limit to 30 symbols for news lookup
     const res = await axios.get(
-      `${ALPACA_DATA_URL}/v1beta1/news?symbols=${symbolsStr}&limit=40&sort=desc`,
+      `${ALPACA_DATA_URL}/v1beta1/news?limit=50&sort=desc`,
       { headers: alpacaHeaders, timeout: 10000 }
     );
     for (const article of (res.data.news || [])) {
+      const text = `${article.headline} ${article.summary || ''}`;
+      if (!matchesNewsKeywords(text, sector)) continue;
+
       const cc = categorizeNews(article.headline, article.summary);
       let imageUrl: string | undefined;
       if (article.images && article.images.length > 0) {
-        imageUrl = article.images.find((i: any) => i.size === 'large')?.url || 
-                   article.images.find((i: any) => i.size === 'small')?.url;
+        imageUrl = article.images.find((i: { size: string; url: string }) => i.size === 'large')?.url ||
+                   article.images.find((i: { size: string; url: string }) => i.size === 'small')?.url;
       }
       const { iso, unix } = normalizeTimestamp(article.created_at);
       allNews.push({

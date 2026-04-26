@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { fetchDynamicEtfs, classifyTheme, formatGrowth } from '@/lib/market';
+import { fetchAlpacaAssets } from '@/lib/alpaca-assets';
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
@@ -348,13 +349,16 @@ export async function GET() {
     // 4. Fetch SA metrics (SI%, rev growth, EPS growth, logos, marketCap fallback)
     const { metrics: saMetrics } = await fetchSAMetrics(nonEtfSymbols);
 
+    // 4b. Fetch Alpaca asset master (provides name + classification for warrants/rights/units)
+    const alpacaAssets = await fetchAlpacaAssets(symbols);
+
     // 5. Fetch live catalysts for non-ETF stocks
     const catalysts = await fetchCatalysts(nonEtfSymbols);
 
     // 6. Fetch pre-market data from Yahoo Finance for all symbols
     const preMarketData = await fetchPreMarketData(symbols);
 
-    // 7. Fetch sparkline data (7-day closing prices) for all symbols
+    // 7. Fetch sparkline data (10-day closing prices) for all symbols
     const sparklines = await fetchSparklines(symbols);
 
     // 8. Build gappers array
@@ -400,9 +404,16 @@ export async function GET() {
         ? (prof.shareOutstanding >= 1000 ? (prof.shareOutstanding / 1000).toFixed(1) + 'B' : prof.shareOutstanding.toFixed(1) + 'M')
         : '--';
 
-      const industry = prof?.finnhubIndustry || (isEtf ? 'ETF' : '--');
-      const theme = classifyTheme(industry, prof?.name || sym);
-      const category = isEtf ? 'ETF' : (prof?.finnhubIndustry ? 'Stock' : '--');
+      const asset = alpacaAssets[sym];
+      // Industry: Finnhub primary → Alpaca asset name guess → '--'
+      const industry = prof?.finnhubIndustry || (isEtf ? 'ETF' : asset?.industryGuess || '--');
+      const theme = prof?.finnhubIndustry
+        ? classifyTheme(prof.finnhubIndustry, prof.name || sym)
+        : (isEtf ? 'ETF' : asset?.themeGuess || '--');
+      // Category: ETF → "ETF"; Finnhub stock → "Stock"; Alpaca classified (Warrant/Right/Unit) → that label
+      const category = isEtf
+        ? 'ETF'
+        : (prof?.finnhubIndustry ? 'Stock' : (asset?.category || '--'));
 
       const catalyst = catalysts[sym] || (isEtf ? `Leveraged/Inverse ETF tracking ${theme}` : '--');
 

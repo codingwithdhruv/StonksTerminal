@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { classifyTheme, formatGrowth } from '@/lib/market';
+import { fetchAlpacaAssets, AlpacaAsset } from '@/lib/alpaca-assets';
 
 const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
@@ -35,27 +36,32 @@ interface YFPreMarket {
 
 /**
  * Map sector slugs to Finnhub industry keyword matchers.
- * Each entry is an array of lowercase substrings to match against finnhubIndustry.
+ * Match uses word-boundary at start (\b{kw}) so 'technology' won't match 'biotechnology'.
  */
 const SECTOR_INDUSTRY_MAP: Record<string, string[]> = {
-  technology: ['technology', 'semiconductor', 'software', 'internet', 'electronic', 'computer', 'information technology'],
-  healthcare: ['biotechnology', 'pharmaceut', 'health care', 'medical', 'hospital', 'diagnostic', 'life science'],
-  macro: ['bank', 'financial', 'capital market', 'insurance', 'credit', 'investment', 'diversified financial'],
-  financials: ['bank', 'financial', 'capital market', 'insurance', 'credit', 'investment', 'diversified financial'],
+  technology: ['technology', 'semiconductor', 'software', 'internet', 'electronic', 'computer', 'it services', 'information technology', 'data processing'],
+  healthcare: ['biotechnology', 'pharmaceutical', 'health care', 'health-care', 'healthcare', 'medical', 'hospital', 'diagnostic', 'life science', 'drug'],
+  macro: ['bank', 'financial', 'capital market', 'insurance', 'credit', 'investment', 'diversified financial', 'asset management'],
+  financials: ['bank', 'financial', 'capital market', 'insurance', 'credit', 'investment', 'diversified financial', 'asset management'],
   communications: ['communic', 'media', 'telecom', 'interactive', 'entertainment', 'broadcast', 'wireless'],
   energy: ['oil', 'gas', 'energy', 'solar', 'wind', 'renew', 'petroleum', 'coal', 'nuclear'],
-  utilities: ['utilit', 'electric', 'water', 'gas distribut', 'power'],
+  utilities: ['utilit', 'electric', 'water utility', 'gas distribut', 'power'],
   realestate: ['real estate', 'reit', 'property'],
-  crypto: ['cryptocurrency', 'blockchain', 'digital asset', 'bitcoin', 'mining'],
+  crypto: ['cryptocurrency', 'blockchain', 'digital asset', 'bitcoin', 'crypto'],
   fda: ['biotechnology', 'pharmaceut', 'drug', 'medical device', 'life science', 'clinical'],
   earnings: [], // no filter — show top movers by grade
 };
 
-function matchesSector(industry: string, sector: string): boolean {
+/** Word-boundary keyword match — prevents 'technology' from matching 'biotechnology' */
+function matchesSector(industry: string, theme: string, sector: string): boolean {
   const keywords = SECTOR_INDUSTRY_MAP[sector.toLowerCase()] || [];
   if (keywords.length === 0) return true; // no filter = all stocks
-  const lower = industry.toLowerCase();
-  return keywords.some(kw => lower.includes(kw));
+  const haystack = `${industry} ${theme}`.toLowerCase();
+  return keywords.some(kw => {
+    // Use \b at start — so 'technology' won't match inside 'biotechnology'
+    const safe = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${safe}`).test(haystack);
+  });
 }
 
 /** Fetch 10-day closing prices per symbol for sparkline charts */
@@ -284,33 +290,41 @@ export async function GET(request: Request) {
       }
     }
 
-    // 4. Filter symbols to those matching the sector
+    // 4. Fetch Alpaca asset master (provides classification for warrants and industry guess as fallback)
+    const alpacaAssets = await fetchAlpacaAssets(allSymbols);
+
+    // 5. Filter symbols to those matching the sector
+    //    Use Finnhub industry primary, Alpaca asset name guess as fallback
     const sectorSymbols = allSymbols.filter(sym => {
       const prof = profiles[sym];
-      if (!prof?.finnhubIndustry) return false;
-      return matchesSector(prof.finnhubIndustry, sector);
+      const asset = alpacaAssets[sym];
+      const industry = prof?.finnhubIndustry || asset?.industryGuess || '';
+      const theme = asset?.themeGuess || '';
+      if (!industry || industry === '--') return false;
+      return matchesSector(industry, theme, sector);
     });
 
     if (sectorSymbols.length === 0) {
       return NextResponse.json({ data: [] });
     }
 
-    // 5. Fetch SA metrics (graceful degradation on quota exceeded)
+    // 6. Fetch SA metrics (graceful degradation on quota exceeded)
     const saMetrics = await fetchSAMetrics(sectorSymbols);
 
-    // 6. Fetch catalysts
+    // 7. Fetch catalysts
     const catalysts = await fetchCatalysts(sectorSymbols);
 
-    // 7. Fetch pre-market data + sparklines in parallel
+    // 8. Fetch pre-market data + sparklines in parallel
     const [preMarketData, sparklines] = await Promise.all([
       fetchPreMarketData(sectorSymbols),
       fetchSparklines(sectorSymbols),
     ]);
 
-    // 8. Build result
+    // 9. Build result
     const stocks = sectorSymbols.map((sym) => {
       const snap = snapshots[sym];
       const prof = profiles[sym];
+      const asset: AlpacaAsset | undefined = alpacaAssets[sym];
       const sa = saMetrics[sym] || {};
       const pm = preMarketData[sym] || { premktChgPct: '--', premktVol: 0 };
 
@@ -338,8 +352,12 @@ export async function GET(request: Request) {
       const float = prof?.shareOutstanding
         ? (prof.shareOutstanding >= 1000 ? (prof.shareOutstanding / 1000).toFixed(1) + 'B' : prof.shareOutstanding.toFixed(1) + 'M')
         : '--';
-      const industry = prof?.finnhubIndustry || '--';
-      const theme = classifyTheme(industry, prof?.name || sym);
+      // Industry: Finnhub primary → Alpaca asset name guess → '--'
+      const industry = prof?.finnhubIndustry || asset?.industryGuess || '--';
+      const theme = prof?.finnhubIndustry
+        ? classifyTheme(prof.finnhubIndustry, prof.name || sym)
+        : (asset?.themeGuess || '--');
+      const stockCategory = prof?.finnhubIndustry ? 'Stock' : (asset?.category || 'Stock');
       const logo = sa.logo || prof?.logo || undefined;
 
       return {
@@ -360,7 +378,7 @@ export async function GET(request: Request) {
         shortPct: sa.shortPct || '--',
         theme,
         industry,
-        category: 'Stock',
+        category: stockCategory,
         revGrowth: sa.revGrowth || '--',
         epsGrowth: sa.epsGrowth || '--',
         catalyst: catalysts[sym] || '--',
