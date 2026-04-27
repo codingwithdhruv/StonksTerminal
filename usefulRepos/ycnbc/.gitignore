@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+.coverage
+.vscode/
+build/
+dist/
+env/
+ycnbc.egg-info/
+results_test/
+..mypy_cache/
+latest.py
