@@ -36,6 +36,7 @@ interface Gapper {
   revGrowth?: string;
   epsGrowth?: string;
   catalyst?: string;
+  mktCapRaw?: number;
 }
 
 interface TerminalDashboardProps {
@@ -156,10 +157,14 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
   const colChooserRef = useRef<HTMLDivElement>(null);
 
   // Filters
-  const [filterCapSize, setFilterCapSize] = useState('all');
-  const [filterMinVol, setFilterMinVol] = useState(0);
   const [filterTicker, setFilterTicker] = useState('');
+  const [filterCapSize, setFilterCapSize] = useState('all');
   const [filterGrade, setFilterGrade] = useState('all');
+  const [filterMinGap, setFilterMinGap] = useState(0);
+  const [filterMinPrice, setFilterMinPrice] = useState(0);
+  const [filterMaxPrice, setFilterMaxPrice] = useState(1000);
+  const [filterMinMktCap, setFilterMinMktCap] = useState(0);
+  const [filterMinVol, setFilterMinVol] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
 
   // Watchlist
@@ -266,13 +271,28 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
   // Filtered gappers
   const filteredGappers = useMemo(() => {
     return gappers.filter(g => {
-      if (filterTicker && !g.symbol.toUpperCase().includes(filterTicker.toUpperCase())) return false;
+      // Ticker search
+      if (filterTicker && !g.symbol.toLowerCase().includes(filterTicker.toLowerCase())) return false;
+      
+      // Cap Size
       if (filterCapSize !== 'all' && g.capSize !== filterCapSize) return false;
+      
+      // Grade
       if (filterGrade !== 'all' && g.grade !== filterGrade) return false;
-      if (filterMinVol > 0 && g.volume < filterMinVol) return false;
+      
+      // Sliders
+      const gap = parseFloat(g.premktChgPct || '0');
+      if (filterMinGap !== 0 && gap < filterMinGap) return false;
+      
+      if (g.price < filterMinPrice || g.price > filterMaxPrice) return false;
+      
+      if (filterMinMktCap !== 0 && (g.mktCapRaw || 0) < filterMinMktCap) return false;
+      
+      if (filterMinVol !== 0 && g.volume < filterMinVol) return false;
+
       return true;
     });
-  }, [gappers, filterTicker, filterCapSize, filterGrade, filterMinVol]);
+  }, [gappers, filterTicker, filterCapSize, filterGrade, filterMinGap, filterMinPrice, filterMaxPrice, filterMinMktCap, filterMinVol]);
 
   // Filtered news
   let filteredNews = [...news];
@@ -321,108 +341,177 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
     : 'border-slate-500/30 text-slate-400 bg-slate-500/10';
 
   return (
-    <div className="flex h-full flex-col p-4 sm:p-6 font-sans text-[11px] sm:text-xs tracking-tight text-slate-300 selection:bg-primary/20">
+    <div className="flex h-full flex-col p-4 sm:p-6 lg:p-8 relative">
+      <div className="noise-overlay" />
 
-      {/* Header */}
-      <motion.header 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 gap-4 border-b border-white/5"
-      >
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-primary fill-primary/10" />
-            <h1 className="text-xl sm:text-2xl font-unbounded font-black uppercase tracking-tighter text-foreground">
-              {categorySlug ? categorySlug : 'Terminal'} <span className="text-primary">PRO</span>
-            </h1>
+      {/* Header section with refined typography and spacing */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 relative z-10">
+        <div className="flex flex-col">
+          <div className="flex items-center gap-3">
+            <motion.h1 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="text-2xl sm:text-3xl font-unbounded font-black tracking-tighter uppercase text-white"
+            >
+              Market <span className="text-primary italic">Movers</span>
+            </motion.h1>
+            <Badge variant="outline" className="bg-primary/10 border-primary/20 text-primary text-[10px] font-black uppercase tracking-widest px-2.5 h-6">
+              Live Terminal
+            </Badge>
           </div>
-          <p className="text-[10px] text-muted-foreground/60 tracking-[0.2em] font-medium uppercase">
-            {filteredGappers.length} High-Impact Movers · {filteredNews.length} Intelligence Signals · <span className="text-emerald-500/80">Real-Time Sync</span>
+          <p className="text-[10px] sm:text-[11px] text-muted-foreground/60 uppercase font-bold tracking-[0.3em] mt-1">
+            Real-time pre-market intelligence · {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-            <Activity className="h-3 w-3 animate-pulse text-emerald-400" />
-            <span className="text-[10px] font-black tracking-widest text-emerald-400">LIVE FEED</span>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowFilters(!showFilters)}
+              className={cn(
+                "h-10 px-4 rounded-xl font-unbounded text-[10px] font-black uppercase tracking-widest transition-all",
+                showFilters ? "bg-primary text-slate-950 border-primary" : "bg-white/[0.03] border-white/10 hover:bg-white/[0.08]"
+              )}
+            >
+              <Filter className={cn("mr-2 h-3.5 w-3.5", showFilters ? "fill-slate-950" : "")} />
+              Filters
+              {(filterMinGap > 0 || filterMinPrice > 0 || filterMaxPrice < 1000 || filterMinMktCap > 0 || filterMinVol > 0 || filterTicker) && (
+                <span className="ml-2 h-2 w-2 rounded-full bg-slate-950 animate-pulse" />
+              )}
+            </Button>
+
+            <AnimatePresence>
+              {showFilters && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute right-0 top-full mt-3 z-[100] w-[320px] glass-panel border-white/10 p-6 rounded-3xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.6)]"
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="font-unbounded text-[10px] font-black uppercase tracking-widest text-primary">Advanced Filters</h3>
+                    <button 
+                      onClick={() => {
+                        setFilterTicker('');
+                        setFilterMinGap(0);
+                        setFilterMinPrice(0);
+                        setFilterMaxPrice(1000);
+                        setFilterMinMktCap(0);
+                        setFilterMinVol(0);
+                        setFilterCapSize('all');
+                        setFilterGrade('all');
+                      }}
+                      className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 hover:text-white transition-colors"
+                    >
+                      Reset All
+                    </button>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Symbol Search</label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/40" />
+                        <input 
+                          type="text" 
+                          placeholder="AAPL, TSLA..."
+                          value={filterTicker}
+                          onChange={(e) => setFilterTicker(e.target.value)}
+                          className="w-full h-10 bg-white/[0.03] border border-white/5 rounded-xl pl-10 pr-4 text-xs font-bold text-white focus:outline-none focus:border-primary/50 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Min Gap (%)</label>
+                        <span className="text-[10px] font-mono font-black text-primary">+{filterMinGap}%</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="50" step="1"
+                        value={filterMinGap}
+                        onChange={(e) => setFilterMinGap(Number(e.target.value))}
+                        className="w-full accent-primary h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Price Range ($)</label>
+                        <span className="text-[10px] font-mono font-black text-white">${filterMinPrice} - ${filterMaxPrice}</span>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <input 
+                          type="range" min="0" max="1000" step="5"
+                          value={filterMinPrice}
+                          onChange={(e) => setFilterMinPrice(Number(e.target.value))}
+                          className="w-full accent-primary h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer"
+                        />
+                        <input 
+                          type="range" min="0" max="1000" step="5"
+                          value={filterMaxPrice}
+                          onChange={(e) => setFilterMaxPrice(Number(e.target.value))}
+                          className="w-full accent-primary h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Min Mkt Cap (M)</label>
+                        <span className="text-[10px] font-mono font-black text-white">{filterMinMktCap >= 1000 ? (filterMinMktCap/1000).toFixed(1) + 'B' : filterMinMktCap + 'M'}</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="10000" step="100"
+                        value={filterMinMktCap}
+                        onChange={(e) => setFilterMinMktCap(Number(e.target.value))}
+                        className="w-full accent-primary h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Min Volume</label>
+                        <span className="text-[10px] font-mono font-black text-white">{formatVolume(filterMinVol)}</span>
+                      </div>
+                      <input 
+                        type="range" min="0" max="10000000" step="100000"
+                        value={filterMinVol}
+                        onChange={(e) => setFilterMinVol(Number(e.target.value))}
+                        className="w-full accent-primary h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-          
-          <div className="h-8 w-px bg-white/5 mx-1 hidden sm:block" />
 
           <Button 
             variant="outline" 
             size="sm" 
-            className="h-9 rounded-xl border-white/5 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/10 text-[11px] font-bold gap-2 transition-all"
-            onClick={() => setShowFilters(f => !f)}
-          >
-            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-            Filters {showFilters ? '▲' : '▼'}
-          </Button>
-
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="h-9 rounded-xl border-white/5 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/10 text-[11px] font-bold gap-2 transition-all"
-            onClick={exportCSV}
-          >
-            <Download className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="hidden sm:inline">Export</span>
-          </Button>
-
-          <Button 
-            variant="default" 
-            size="sm" 
-            className="h-9 rounded-xl bg-primary text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20 text-[11px] font-black gap-2 transition-all px-4"
-            onClick={handleSummarize} 
+            onClick={handleSummarize}
             disabled={isSummarizing || filteredNews.length === 0}
+            className="h-10 px-4 rounded-xl font-unbounded text-[10px] font-black uppercase tracking-widest bg-white/[0.03] border-white/10 hover:bg-white/[0.08] hidden sm:flex"
           >
-            <BrainCircuit className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{isSummarizing ? 'Analyzing…' : 'Intelligence Brief'}</span>
+            <BrainCircuit className={cn("mr-2 h-3.5 w-3.5", isSummarizing ? "animate-pulse" : "")} />
+            {isSummarizing ? 'Analyzing...' : 'Intel Summary'}
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => window.open('/api/market', '_blank')}
+            className="h-10 w-10 p-0 rounded-xl bg-white/[0.03] border-white/10 hover:bg-white/[0.08]"
+          >
+            <Download className="h-4 w-4" />
           </Button>
         </div>
-      </motion.header>
+      </div>
 
-      {/* Filter Bar */}
-      {showFilters && (
-        <div className="mb-2 flex flex-wrap gap-2 items-center rounded border border-border/40 bg-muted/10 px-3 py-2">
-          <div className="flex items-center gap-1">
-            <Search className="h-3 w-3 text-muted-foreground" />
-            <input
-              className="bg-transparent outline-none text-xs w-20 placeholder:text-muted-foreground/50"
-              placeholder="Ticker…"
-              value={filterTicker}
-              onChange={e => setFilterTicker(e.target.value)}
-            />
-          </div>
-          <select className="bg-transparent text-xs outline-none border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground"
-            value={filterCapSize} onChange={e => setFilterCapSize(e.target.value)}>
-            <option value="all">All Sizes</option>
-            {['Mega', 'Large', 'Mid', 'Small', 'Micro'].map(s => <option key={s} value={s}>{s} Cap</option>)}
-          </select>
-          <select className="bg-transparent text-xs outline-none border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground"
-            value={filterGrade} onChange={e => setFilterGrade(e.target.value)}>
-            <option value="all">All Grades</option>
-            {['A', 'B', 'C', 'D'].map(g => <option key={g} value={g}>Grade {g}</option>)}
-          </select>
-          <select className="bg-transparent text-xs outline-none border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground"
-            value={filterMinVol.toString()} onChange={e => setFilterMinVol(Number(e.target.value))}>
-            <option value="0">Any Volume</option>
-            <option value="100000">100K+</option>
-            <option value="500000">500K+</option>
-            <option value="1000000">1M+</option>
-            <option value="5000000">5M+</option>
-          </select>
-          <button className="text-[10px] text-muted-foreground hover:text-primary ml-auto"
-            onClick={() => { setFilterTicker(''); setFilterCapSize('all'); setFilterGrade('all'); setFilterMinVol(0); }}>
-            Reset
-          </button>
-        </div>
-      )}
-
-      {/* Stacked Layout Container */}
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
-
-        {/* ── Market Movers Table ── */}
+      <div className="flex min-h-0 flex-1 flex-col gap-6 relative z-10">
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}

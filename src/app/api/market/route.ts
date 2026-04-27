@@ -3,6 +3,7 @@ import axios from 'axios';
 import { fetchDynamicEtfs, classifyTheme, formatGrowth } from '@/lib/market';
 import { fetchAlpacaAssets } from '@/lib/alpaca-assets';
 import { getProfiles, getMetrics, getCatalysts, fetchPreMarketBars } from '@/lib/finnhub-cache';
+import yahooFinance from 'yahoo-finance2';
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
@@ -258,12 +259,22 @@ export async function GET() {
       if (snap?.prevDailyBar?.c) prevCloses[sym] = snap.prevDailyBar.c;
     }
 
-    // 8. Fetch pre-market data + sparklines in parallel
+    // 8. Fetch pre-market data + sparklines + Yahoo Finance quotes in parallel
     //    Pre-market: Alpaca minute bars 4AM-9:30AM ET (free, same credentials, returns {} outside window)
-    const [preMarketData, sparklines] = await Promise.all([
+    const [preMarketData, sparklines, yfQuotes] = await Promise.all([
       fetchPreMarketBars(symbols, prevCloses),
       fetchSparklines(symbols),
+      (yahooFinance as any).quote(symbols).catch((e: any) => {
+        console.error('Yahoo Finance quote fetch error:', e.message);
+        return [];
+      })
     ]);
+
+    // Build YF data map
+    const yfMap: Record<string, any> = {};
+    for (const q of (yfQuotes || [])) {
+      if (q.symbol) yfMap[q.symbol.toUpperCase()] = q;
+    }
 
     // 9. Build gappers array
     const gappers = symbols.map((sym) => {
@@ -272,33 +283,42 @@ export async function GET() {
       const sa = saMetrics[sym] || {};
       const fMetrics = finnhubMetrics[sym] || null;
       const pm = preMarketData[sym] || { premktChgPct: '--', premktVol: 0 };
-      const isEtf = etfSymbols.has(sym) || prof?.finnhubIndustry?.toLowerCase().includes('etf');
+      const yf = yfMap[sym] || {};
+      const isEtf = etfSymbols.has(sym) || prof?.finnhubIndustry?.toLowerCase().includes('etf') || yf.quoteType === 'ETF';
       const vol = volumeMap.get(sym) || { volume: 0, trade_count: 0 };
 
       let price = 0, prevClose = 0, changePct = 0;
       if (snap) {
-        price = snap.latestTrade?.p || snap.dailyBar?.c || 0;
-        prevClose = snap.prevDailyBar?.c || price;
+        price = snap.latestTrade?.p || snap.dailyBar?.c || yf.regularMarketPrice || 0;
+        prevClose = snap.prevDailyBar?.c || yf.regularMarketPreviousClose || price;
+        if (prevClose > 0) changePct = ((price - prevClose) / prevClose) * 100;
+      } else if (yf.regularMarketPrice) {
+        price = yf.regularMarketPrice;
+        prevClose = yf.regularMarketPreviousClose || price;
         if (prevClose > 0) changePct = ((price - prevClose) / prevClose) * 100;
       }
+      
       if (price === 0) return null;
 
-      const volume = vol.volume || snap?.dailyBar?.v || 0;
+      const volume = vol.volume || snap?.dailyBar?.v || yf.regularMarketVolume || 0;
 
       let grade = 'D';
       if (Math.abs(changePct) > 10 && volume > 500000) grade = 'A';
       else if (Math.abs(changePct) > 5 && volume > 100000) grade = 'B';
       else if (Math.abs(changePct) > 2) grade = 'C';
 
-      // Market cap: Finnhub profile2 → Finnhub metric → SA (all in millions USD)
+      // Market cap: Yahoo (billions) → Finnhub profile2 → Finnhub metric → SA (all in millions USD)
       let mktCapVal = 0;
-      if (prof?.marketCapitalization && prof.marketCapitalization > 0) {
+      if (yf.marketCap && yf.marketCap > 0) {
+        mktCapVal = yf.marketCap / 1000000;
+      } else if (prof?.marketCapitalization && prof.marketCapitalization > 0) {
         mktCapVal = prof.marketCapitalization;
       } else if (fMetrics?.marketCapitalization && fMetrics.marketCapitalization > 0) {
         mktCapVal = fMetrics.marketCapitalization;
       } else if (sa.saMktCap && sa.saMktCap > 0) {
         mktCapVal = sa.saMktCap / 1000000;
       }
+      
       const mktCapDisplay = mktCapVal > 0
         ? (mktCapVal >= 1000 ? (mktCapVal / 1000).toFixed(2) + 'B' : mktCapVal.toFixed(0) + 'M')
         : (isEtf ? 'ETF' : '--');
@@ -307,8 +327,9 @@ export async function GET() {
         ? (mktCapVal > 200000 ? 'Mega' : mktCapVal > 10000 ? 'Large' : mktCapVal > 2000 ? 'Mid' : mktCapVal > 300 ? 'Small' : 'Micro')
         : (isEtf ? 'ETF' : '--');
 
-      const float = prof?.shareOutstanding
-        ? (prof.shareOutstanding >= 1000 ? (prof.shareOutstanding / 1000).toFixed(1) + 'B' : prof.shareOutstanding.toFixed(1) + 'M')
+      const shares = yf.sharesOutstanding || prof?.shareOutstanding || 0;
+      const float = shares > 0
+        ? (shares >= 1000 ? (shares / 1000).toFixed(1) + 'B' : shares.toFixed(1) + 'M')
         : '--';
 
       const asset = alpacaAssets[sym];
@@ -327,6 +348,12 @@ export async function GET() {
       // Logo: prefer SA logo, fallback to Finnhub logo
       const logo = sa.logo || prof?.logo || undefined;
 
+      // Short Interest: SA → Yahoo
+      let shortPct = sa.shortPct || '--';
+      if (shortPct === '--' && yf.shortPercentOfFloat) {
+        shortPct = (yf.shortPercentOfFloat * 100).toFixed(1) + '%';
+      }
+
       return {
         symbol: sym,
         logo,
@@ -340,9 +367,10 @@ export async function GET() {
         sparkline: sparklines[sym] || [],
         grade,
         mktCap: mktCapDisplay,
+        mktCapRaw: mktCapVal, // Added for UI filtering
         capSize,
         float,
-        shortPct: sa.shortPct || '--',
+        shortPct,
         theme,
         industry,
         category,
