@@ -61,3 +61,32 @@ export function cleanHeadline(headline: string): string {
     .replace(/&gt;/g, '>')
     .trim();
 }
+
+export function getSentiment(headline: string, summary: string): 'bullish' | 'bearish' | 'neutral' {
+  const text = `${headline} ${summary}`.toLowerCase();
+  const bullish = ['up', 'rise', 'beat', 'growth', 'positive', 'surge', 'higher', 'partnership', 'approval', 'profit'];
+  const bearish = ['down', 'fall', 'miss', 'negative', 'decline', 'lower', 'loss', 'warning', 'risk', 'deficit'];
+  
+  let score = 0;
+  bullish.forEach(word => { if (text.includes(word)) score++; });
+  bearish.forEach(word => { if (text.includes(word)) score--; });
+  
+  return score > 0 ? 'bullish' : score < 0 ? 'bearish' : 'neutral';
+}
+
+export function formatNewsTime(dateStr: string): string {
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const mins = Math.floor(diff / 60000);
+    const hrs = Math.floor(mins / 60);
+    
+    if (mins < 1) return 'JUST NOW';
+    if (mins < 60) return `${mins}m ago`;
+    if (hrs < 24) return `${hrs}h ago`;
+    return date.toLocaleDateString();
+  } catch {
+    return dateStr;
+  }
+}

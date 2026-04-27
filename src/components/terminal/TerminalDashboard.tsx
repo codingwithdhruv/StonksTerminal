@@ -225,7 +225,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
         setGappers(marketData.data || []);
 
         // Replace news on category change, or append on periodic refresh
-        setNews(incomingNews);
+        setNews(incomingNewsData.data || []);
       } catch (error) {
         console.error('Error fetching data', error);
       } finally {
