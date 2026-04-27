@@ -223,10 +223,11 @@ async function fetchSAMetrics(symbols: string[]): Promise<{
 export async function GET() {
   try {
     const etfSymbols = await getEtfSymbols();
-    // 1. Get most active stocks (top 50) + movers for more coverage
+    // 1. Get most active stocks (top 40) + movers (top 15) — keeps total ~50 unique symbols,
+    //    of which ~30 are Finnhub-eligible common stocks, well under the 60/min limit.
     const [screenerRes, moversRes] = await Promise.allSettled([
-      axios.get(`${ALPACA_DATA_URL}/v1beta1/screener/stocks/most-actives?by=volume&top=50`, { headers: alpacaHeaders }),
-      axios.get(`${ALPACA_DATA_URL}/v1beta1/screener/stocks/movers?top=20`, { headers: alpacaHeaders }),
+      axios.get(`${ALPACA_DATA_URL}/v1beta1/screener/stocks/most-actives?by=volume&top=40`, { headers: alpacaHeaders }),
+      axios.get(`${ALPACA_DATA_URL}/v1beta1/screener/stocks/movers?top=15`, { headers: alpacaHeaders }),
     ]);
 
     // Collect all unique symbols
@@ -383,7 +384,9 @@ export async function GET() {
     gappers.sort((a, b) => Math.abs(parseFloat(b!.changePct)) - Math.abs(parseFloat(a!.changePct)));
 
     return NextResponse.json({ data: gappers }, {
-      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
+      // Cache 90s at edge, serve stale up to 5 min while revalidating —
+      // gives Finnhub cache time to warm without burdening every visitor with cold-start
+      headers: { 'Cache-Control': 'public, s-maxage=90, stale-while-revalidate=300' },
     });
   } catch (error: unknown) {
     const err = error as { response?: { data?: unknown }; message?: string };

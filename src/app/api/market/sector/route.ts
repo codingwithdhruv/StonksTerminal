@@ -191,10 +191,11 @@ export async function GET(request: Request) {
   const sector = searchParams.get('sector') || 'technology';
 
   try {
-    // 1. Get most-active stocks + movers from Alpaca (same source as overview)
+    // 1. Get most-active stocks + movers from Alpaca — top=60 to give sector filter room,
+    //    most warrants get filtered out so Finnhub-eligible count stays under 60/min limit.
     const [screenerRes, moversRes] = await Promise.allSettled([
-      axios.get(`${ALPACA_DATA_URL}/v1beta1/screener/stocks/most-actives?by=volume&top=100`, { headers: alpacaHeaders }),
-      axios.get(`${ALPACA_DATA_URL}/v1beta1/screener/stocks/movers?top=30`, { headers: alpacaHeaders }),
+      axios.get(`${ALPACA_DATA_URL}/v1beta1/screener/stocks/most-actives?by=volume&top=60`, { headers: alpacaHeaders }),
+      axios.get(`${ALPACA_DATA_URL}/v1beta1/screener/stocks/movers?top=20`, { headers: alpacaHeaders }),
     ]);
 
     const symbolSet = new Set<string>();
@@ -333,7 +334,7 @@ export async function GET(request: Request) {
     stocks.sort((a, b) => Math.abs(parseFloat(b!.changePct)) - Math.abs(parseFloat(a!.changePct)));
 
     return NextResponse.json({ data: stocks }, {
-      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
+      headers: { 'Cache-Control': 'public, s-maxage=90, stale-while-revalidate=300' },
     });
   } catch (error: unknown) {
     const err = error as { response?: { data?: unknown }; message?: string };
