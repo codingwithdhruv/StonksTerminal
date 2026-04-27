@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { categorizeNews, getCategoryLabel, normalizeTimestamp, NewsItem, NEWS_PLACEHOLDER } from '@/lib/news';
+import { categorizeNews, getCategoryLabel, normalizeTimestamp, NewsItem, generateNewsId, NEWS_PLACEHOLDER } from '@/lib/news';
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 
@@ -30,12 +30,10 @@ interface YFArticleLegacy {
 
 export async function GET() {
   if (!RAPIDAPI_KEY) {
-    console.error('RAPIDAPI_KEY is not set');
     return NextResponse.json({ data: [] });
   }
 
   try {
-    // Try the v2/list endpoint with POST
     const url = `https://apidojo-yahoo-finance-v1.p.rapidapi.com/news/v2/list`;
 
     const newsRes = await axios.post(url, {
@@ -50,89 +48,68 @@ export async function GET() {
       timeout: 10000,
     });
 
-    // Parse response — APIDojo has multiple response shapes across versions
-    let parsedNews: Array<{
-      id: string;
-      headline: string;
-      summary: string;
-      url: string;
-      symbols: string[];
-      createdAt: string;
-      _timestamp: number;
-      source: string;
-      imageUrl: string;
-    }> = [];
+    let mapped: NewsItem[] = [];
 
-    // Try the newer stream format first
     const stream = newsRes.data?.data?.main?.stream as YFStreamItem[] | undefined;
     if (Array.isArray(stream) && stream.length > 0) {
-      parsedNews = stream
+      mapped = stream
         .filter((item) => item.content?.title)
         .map((item) => {
           const c = item.content!;
-          const symbols = (c.finance?.stockTickers || [])
-            .map((t) => t.symbol || '')
-            .filter(Boolean);
-          // Pick the largest resolution thumbnail
+          const headline = c.title || '';
+          const summary = c.summary || '';
+          const categoryClass = categorizeNews(headline, summary);
+          const { iso, unix } = normalizeTimestamp(c.pubDate || Date.now());
           const resolutions = c.thumbnail?.resolutions || [];
           const bestThumb = resolutions.length > 0 ? resolutions[resolutions.length - 1] : undefined;
+
           return {
-            id: c.id || Math.random().toString(36),
-            headline: c.title || '',
-            summary: c.summary || '',
+            id: generateNewsId('Yahoo Finance', headline),
+            headline,
+            summary,
             url: c.clickThroughUrl?.url || '',
-            symbols,
-            createdAt: normalizeTimestamp(c.pubDate || Date.now()).iso,
-            _timestamp: normalizeTimestamp(c.pubDate || Date.now()).unix,
+            symbols: (c.finance?.stockTickers || []).map((t) => t.symbol || '').filter(Boolean),
+            createdAt: iso,
+            _timestamp: unix,
+            category: getCategoryLabel(categoryClass),
+            categoryClass,
             source: c.provider?.displayName || 'Yahoo Finance',
             imageUrl: bestThumb?.url || NEWS_PLACEHOLDER,
           };
         });
     } else {
-      // Fallback to legacy format
       const articles: YFArticleLegacy[] =
         Array.isArray(newsRes.data?.items) ? newsRes.data.items :
         Array.isArray(newsRes.data?.data) ? newsRes.data.data :
         Array.isArray(newsRes.data) ? newsRes.data : [];
 
-      parsedNews = articles.slice(0, 30).map((article) => {
+      mapped = articles.slice(0, 30).map((article) => {
+        const headline = article.title || '';
+        const summary = article.summary || '';
+        const categoryClass = categorizeNews(headline, summary);
+        const { iso, unix } = normalizeTimestamp(article.providerPublishTime ? article.providerPublishTime * 1000 : Date.now());
         const resolutions = article.thumbnail?.resolutions || [];
         const bestThumb = resolutions.length > 0 ? resolutions[resolutions.length - 1] : undefined;
+
         return {
-          id: article.uuid || Math.random().toString(36),
-          headline: article.title || '',
-          summary: article.summary || '',
+          id: generateNewsId('Yahoo Finance', headline),
+          headline,
+          summary,
           url: article.link || '',
           symbols: article.relatedTickers || [],
-          createdAt: normalizeTimestamp(article.providerPublishTime ? article.providerPublishTime * 1000 : Date.now()).iso,
-          _timestamp: normalizeTimestamp(article.providerPublishTime ? article.providerPublishTime * 1000 : Date.now()).unix,
+          createdAt: iso,
+          _timestamp: unix,
+          category: getCategoryLabel(categoryClass),
+          categoryClass,
           source: article.publisher || 'Yahoo Finance',
           imageUrl: bestThumb?.url || NEWS_PLACEHOLDER,
         };
       });
     }
 
-    // Apply categorization
-    const categorizedNews: NewsItem[] = parsedNews.map((item) => {
-      const categoryClass = categorizeNews(item.headline, item.summary);
-      return {
-        ...item,
-        id: `yf-${item.id}`,
-        category: getCategoryLabel(categoryClass),
-        categoryClass,
-      };
-    });
-
-    return NextResponse.json({ data: categorizedNews }, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-      },
-    });
-  } catch (error: unknown) {
-    const err = error as { response?: { status?: number; data?: unknown }; message?: string };
-    console.error('Error fetching Yahoo Finance news:', err.response?.status, err.response?.data || err.message);
-
-    // Return empty instead of mock — other sources cover the feed
+    return NextResponse.json({ data: mapped });
+  } catch (error) {
+    console.error('Error fetching Yahoo Finance news:', error);
     return NextResponse.json({ data: [] });
   }
 }

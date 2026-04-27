@@ -20,7 +20,7 @@ export type CategoryClass =
   | 'cat-others';
 
 export interface NewsItem {
-  id: string | number;
+  id: string;
   headline: string;
   summary: string;
   category: string;
@@ -32,6 +32,13 @@ export interface NewsItem {
   imageUrl?: string;
   _timestamp: number;
 }
+
+/** Generate a stable ID based on source and headline to prevent duplicates across refreshes */
+export function generateNewsId(source: string, headline: string): string {
+  const hash = headline.split('').reduce((acc, char) => ((acc << 5) - acc) + char.charCodeAt(0), 0);
+  return `${source.toLowerCase().replace(/\s+/g, '-')}-${Math.abs(hash).toString(36)}`;
+}
+
 
 export function categorizeNews(headline: string, summary: string): CategoryClass {
   const text = `${headline} ${summary}`.toLowerCase();

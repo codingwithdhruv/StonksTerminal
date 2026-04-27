@@ -300,8 +300,8 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
     filteredNews = filteredNews.filter(n => n.source?.toLowerCase().includes(sourceFilter.toLowerCase()));
   }
   filteredNews.sort((a, b) => {
-    const tA = new Date(a.createdAt).getTime();
-    const tB = new Date(b.createdAt).getTime();
+    const tA = a._timestamp;
+    const tB = b._timestamp;
     return sortBy === 'newest' ? tB - tA : tA - tB;
   });
 
@@ -516,7 +516,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1 }}
-          className="flex min-h-[300px] h-[48%] flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40"
+          className="flex-[1.2] min-h-[400px] flex flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40"
         >
           <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-3">
             <div className="flex items-center gap-3">
@@ -714,7 +714,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="flex min-h-[300px] h-[52%] flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40"
+          className="flex-1 min-h-[350px] flex flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40"
         >
           <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-3">
             <div className="flex items-center gap-3">
@@ -725,8 +725,12 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                 <span className="font-unbounded text-[10px] font-black uppercase tracking-widest text-foreground">
                   Unified Intelligence Feed
                 </span>
-                <p className="text-[9px] text-muted-foreground/60 uppercase font-medium mt-0.5">
-                  {filteredNews.length} high-confidence signals
+                <p className="text-[9px] text-muted-foreground/60 uppercase font-bold mt-0.5 flex items-center gap-1.5">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                  </span>
+                  {filteredNews.length} Intelligence Signals Detected
                 </p>
               </div>
             </div>
