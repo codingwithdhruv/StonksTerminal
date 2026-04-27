@@ -264,14 +264,31 @@ export async function GET() {
       } else if (avOverview?.MarketCapitalization && avOverview.MarketCapitalization !== 'None') {
         mktCapVal = parseInt(avOverview.MarketCapitalization, 10) / 1000000;
       }
+
+      // Shares Outstanding fallbacks
+      let sharesVal = yf.sharesOutstanding ? (yf.sharesOutstanding / 1000000) : 
+                      (prof?.shareOutstanding || 0);
+      if (sharesVal === 0 && avOverview?.SharesOutstanding) {
+        sharesVal = parseInt(avOverview.SharesOutstanding, 10) / 1000000;
+      }
+
+      // If mktCap is still missing, estimate it
+      if (mktCapVal === 0 && price > 0 && sharesVal > 0) {
+        mktCapVal = price * sharesVal;
+      }
       
       const mktCapDisplay = mktCapVal > 0
         ? (mktCapVal >= 1000 ? (mktCapVal / 1000).toFixed(2) + 'B' : mktCapVal.toFixed(0) + 'M')
         : (isEtf ? 'ETF' : '--');
 
-      const capSize = mktCapVal > 0
-        ? (mktCapVal > 200000 ? 'Mega' : mktCapVal > 10000 ? 'Large' : mktCapVal > 2000 ? 'Mid' : mktCapVal > 300 ? 'Small' : 'Micro')
-        : (isEtf ? 'ETF' : '--');
+      let capSize = '--';
+      if (mktCapVal > 0) {
+        capSize = (mktCapVal > 200000 ? 'Mega' : mktCapVal > 10000 ? 'Large' : mktCapVal > 2000 ? 'Mid' : mktCapVal > 300 ? 'Small' : 'Micro');
+      } else if (!isEtf && price > 0 && price < 5) {
+        capSize = 'Micro'; // Penny stocks are almost always Micro cap
+      } else if (isEtf) {
+        capSize = 'ETF';
+      }
 
       const pmChgPct = premktChgPct !== '--' ? premktChgPct :
         (yf.preMarketChangePercent != null ? (yf.preMarketChangePercent >= 0 ? '+' : '') + yf.preMarketChangePercent.toFixed(2) + '%' :
@@ -279,10 +296,11 @@ export async function GET() {
       
       const pmVol = premktVol > 0 ? premktVol : (yf.preMarketVolume || yf.postMarketVolume || 0);
 
-      const shares = yf.sharesOutstanding ? (yf.sharesOutstanding / 1000000) : (prof?.shareOutstanding || 0);
-      const float = shares > 0
-        ? (shares >= 1000 ? (shares / 1000).toFixed(1) + 'B' : shares.toFixed(1) + 'M')
+      const float = sharesVal > 0
+        ? (sharesVal >= 1000 ? (sharesVal / 1000).toFixed(1) + 'B' : sharesVal.toFixed(1) + 'M')
         : '--';
+
+      const shortPct = yfFund.shortPct || '--';
 
       const asset = alpacaAssets[sym];
       const avIndustry = avOverview?.Sector || avOverview?.Industry;
@@ -314,7 +332,7 @@ export async function GET() {
         mktCapRaw: mktCapVal,
         capSize,
         float,
-        shortPct: yfFund.shortPct || '--',
+        shortPct,
         theme,
         industry,
         category,

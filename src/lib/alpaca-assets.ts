@@ -32,24 +32,25 @@ function classifyByName(name: string): AlpacaAsset['category'] {
   return 'Stock';
 }
 
-/** Guess industry/theme from name keywords (used when Finnhub fails) */
 function guessIndustry(name: string): { industry: string; theme: string } {
   const n = name.toLowerCase();
   if (n.match(/acquisition corp|spac|capital corp/)) return { industry: 'SPAC / Acquisition', theme: 'SPAC' };
-  if (n.match(/gold|silver|mining|metal|copper/)) return { industry: 'Mining', theme: 'Mining' };
-  if (n.match(/oil|gas|petroleum|energy/)) return { industry: 'Oil & Gas', theme: 'Energy' };
-  if (n.match(/biotech|biopharm|therapeut|oncolog|pharma/)) return { industry: 'Biotechnology', theme: 'Biotechnology' };
-  if (n.match(/medical|health|hospital|clinical/)) return { industry: 'Health Care', theme: 'Healthcare' };
-  if (n.match(/bank|financ|capital|holdings|asset management/)) return { industry: 'Financials', theme: 'Financials' };
-  if (n.match(/tech|software|systems|digital|cyber|ai |artificial/)) return { industry: 'Technology', theme: 'Technology' };
-  if (n.match(/semiconductor|silicon|chip/)) return { industry: 'Semiconductors', theme: 'Semiconductors' };
-  if (n.match(/crypto|bitcoin|blockchain/)) return { industry: 'Cryptocurrency', theme: 'Crypto' };
-  if (n.match(/real estate|reit|property/)) return { industry: 'Real Estate', theme: 'Real Estate' };
-  if (n.match(/auto|vehicle|motor|electric vehicle/)) return { industry: 'Automotive', theme: 'Automotive' };
-  if (n.match(/retail|consumer|brand|apparel/)) return { industry: 'Retail', theme: 'Consumer' };
-  if (n.match(/food|beverage|restaurant/)) return { industry: 'Food & Beverages', theme: 'Food & Bev' };
-  if (n.match(/communic|media|telecom/)) return { industry: 'Communications', theme: 'Communications' };
+  if (n.match(/gold|silver|mining|metal|copper|lithium|uranium|origin materials/)) return { industry: 'Mining / Materials', theme: 'Mining' };
+  if (n.match(/oil|gas|petroleum|energy|drilling|pipeline/)) return { industry: 'Oil & Gas', theme: 'Energy' };
+  if (n.match(/biotech|biopharm|therapeut|oncolog|pharma|genomic/)) return { industry: 'Biotechnology', theme: 'Biotechnology' };
+  if (n.match(/medical|health|hospital|clinical|life science/)) return { industry: 'Health Care', theme: 'Healthcare' };
+  if (n.match(/bank|financ|capital|holdings|asset management|insurance|credit/)) return { industry: 'Financials', theme: 'Financials' };
+  if (n.match(/tech|software|systems|digital|cyber|ai |artificial|data|cloud|network/)) return { industry: 'Technology', theme: 'Technology' };
+  if (n.match(/semiconductor|silicon|chip|microelectronics/)) return { industry: 'Semiconductors', theme: 'Semiconductors' };
+  if (n.match(/crypto|bitcoin|blockchain|digital asset/)) return { industry: 'Cryptocurrency', theme: 'Crypto' };
+  if (n.match(/real estate|reit|property|housing/)) return { industry: 'Real Estate', theme: 'Real Estate' };
+  if (n.match(/auto|vehicle|motor|electric vehicle|mobility/)) return { industry: 'Automotive', theme: 'Automotive' };
+  if (n.match(/retail|consumer|brand|apparel|e-commerce/)) return { industry: 'Retail', theme: 'Consumer' };
+  if (n.match(/food|beverage|restaurant|agriculture|tobacco/)) return { industry: 'Food & Beverages', theme: 'Food & Bev' };
+  if (n.match(/communic|media|telecom|entertainment|news/)) return { industry: 'Communications', theme: 'Communications' };
   if (n.match(/etf|fund|trust|index/)) return { industry: 'ETF', theme: 'ETF' };
+  if (n.match(/industrial|manufactur|aerospace|defense|logistics|shipping/)) return { industry: 'Industrials', theme: 'Industrials' };
+  if (n.match(/services|consulting|human resources/)) return { industry: 'Services', theme: 'Services' };
   return { industry: '--', theme: '--' };
 }
 
