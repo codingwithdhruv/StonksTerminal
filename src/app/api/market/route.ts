@@ -5,8 +5,9 @@ export const revalidate = 0;
 import axios from 'axios';
 import { fetchDynamicEtfs, classifyTheme, formatGrowth } from '@/lib/market';
 import { fetchAlpacaAssets } from '@/lib/alpaca-assets';
-import { getProfiles, getMetrics, getCatalysts, fetchPreMarketBars } from '@/lib/finnhub-cache';
+import { getProfiles, getMetrics, getCatalysts } from '@/lib/finnhub-cache';
 import { getAlphaVantageOverviews } from '@/lib/alphavantage';
+import { getTiingoFundamentals } from '@/lib/tiingo';
 import yahooFinance2 from 'yahoo-finance2';
 // @ts-ignore
 const yahooFinance = typeof yahooFinance2 === 'function' ? new yahooFinance2() : (yahooFinance2.default ? new yahooFinance2.default() : yahooFinance2);
@@ -186,28 +187,28 @@ export async function GET() {
     const noProfileSymbols = symbols.filter(s => !profiles[s] && !etfSymbols.has(s));
     const avOverviews = await getAlphaVantageOverviews(noProfileSymbols);
 
+    // 3d. Fetch Tiingo Fundamentals for missing profiles/market caps
+    const tiingoFundamentals = await Promise.all(
+      noProfileSymbols.map(sym => getTiingoFundamentals(sym).then(res => ({ sym, res })))
+    ).then(results => results.reduce((acc, curr) => {
+      if (curr.res) acc[curr.sym] = curr.res;
+      return acc;
+    }, {} as Record<string, any>));
+
     // 4. Fetch Finnhub metrics (revGrowth, epsGrowth, mktCap fallback) — 24h cached.
     const finnhubMetrics = await getMetrics(finnhubEligible);
 
     // 6. Fetch live catalysts via Alpaca news (1 multi-symbol call vs 88 Finnhub calls)
     const catalysts = await getCatalysts(symbols);
 
-    // 7. Build prevClose map for pre-market % calculation
-    const prevCloses: Record<string, number> = {};
-    for (const sym of symbols) {
-      const snap = snapshots[sym];
-      if (snap?.prevDailyBar?.c) prevCloses[sym] = snap.prevDailyBar.c;
-    }
-
-    // 8. Fetch pre-market data + sparklines + Yahoo Finance quotes + YF Metrics in parallel
-    const [preMarketData, sparklines, yfQuotes, yfMetricsRes] = await Promise.all([
-      fetchPreMarketBars(symbols, prevCloses),
+    // 7. Parallel fetch sparklines + Yahoo Finance for quotes/pre-market
+    const [sparklines, yfMetricsRes, yfQuotes] = await Promise.all([
       fetchSparklines(symbols),
+      fetchYFMetrics(symbols),
       yahooFinance.quote(symbols).catch((e: any) => {
         console.error('Yahoo Finance quote fetch error:', e.message);
         return [];
       }),
-      fetchYFMetrics(symbols),
     ]);
 
     const yfFundamentals = yfMetricsRes.metrics;
@@ -222,21 +223,23 @@ export async function GET() {
       const prof = profiles[sym] || null;
       const fMetrics = finnhubMetrics[sym] || null;
       const avOverview = avOverviews[sym] || null;
-      const pm = preMarketData[sym] || { premktChgPct: '--', premktVol: 0 };
+      const tFundamentals = tiingoFundamentals[sym] || null;
       const yf = yfMap[sym] || {};
       const yfFund = yfFundamentals[sym] || {};
-      const isEtf = etfSymbols.has(sym) || prof?.finnhubIndustry?.toLowerCase().includes('etf') || yf.quoteType === 'ETF' || avOverview?.AssetType?.toLowerCase().includes('etf');
-      const vol = volumeMap.get(sym) || { volume: 0, trade_count: 0 };
+      const isEtf = etfSymbols.has(sym) || prof?.finnhubIndustry?.toLowerCase().includes('etf') || avOverview?.AssetType?.toLowerCase().includes('etf');
+      const vol = volumeMap.get(sym) || { volume: snap?.dailyBar?.v || 0, trade_count: 0 };
 
-      let price = 0, prevClose = 0, changePct = 0;
-      if (snap) {
-        price = snap.latestTrade?.p || snap.dailyBar?.c || yf.regularMarketPrice || 0;
-        prevClose = snap.prevDailyBar?.c || yf.regularMarketPreviousClose || price;
-        if (prevClose > 0) changePct = ((price - prevClose) / prevClose) * 100;
-      } else if (yf.regularMarketPrice) {
-        price = yf.regularMarketPrice;
-        prevClose = yf.regularMarketPreviousClose || price;
-        if (prevClose > 0) changePct = ((price - prevClose) / prevClose) * 100;
+      let price = snap?.latestTrade?.p || yf.regularMarketPrice || 0;
+      let prevClose = snap?.prevDailyBar?.c || yf.regularMarketPreviousClose || 0;
+      let changePct = prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0;
+
+      let premktChgPct = '--';
+      let premktVol = 0;
+      if (snap?.dailyBar && snap?.prevDailyBar) {
+         const prePrc = snap.dailyBar.c;
+         const preChg = ((prePrc - snap.prevDailyBar.c) / snap.prevDailyBar.c) * 100;
+         if (preChg !== 0) premktChgPct = (preChg >= 0 ? '+' : '') + preChg.toFixed(2) + '%';
+         premktVol = snap.dailyBar.v || 0;
       }
       
       if (price === 0) return null;
@@ -256,6 +259,8 @@ export async function GET() {
         mktCapVal = prof.marketCapitalization;
       } else if (fMetrics?.marketCapitalization && fMetrics.marketCapitalization > 0) {
         mktCapVal = fMetrics.marketCapitalization;
+      } else if (tFundamentals?.marketCap && tFundamentals.marketCap > 0) {
+        mktCapVal = tFundamentals.marketCap / 1000000;
       } else if (avOverview?.MarketCapitalization && avOverview.MarketCapitalization !== 'None') {
         mktCapVal = parseInt(avOverview.MarketCapitalization, 10) / 1000000;
       }
@@ -268,11 +273,11 @@ export async function GET() {
         ? (mktCapVal > 200000 ? 'Mega' : mktCapVal > 10000 ? 'Large' : mktCapVal > 2000 ? 'Mid' : mktCapVal > 300 ? 'Small' : 'Micro')
         : (isEtf ? 'ETF' : '--');
 
-      const pmChgPct = pm.premktChgPct !== '--' ? pm.premktChgPct :
+      const pmChgPct = premktChgPct !== '--' ? premktChgPct :
         (yf.preMarketChangePercent != null ? (yf.preMarketChangePercent >= 0 ? '+' : '') + yf.preMarketChangePercent.toFixed(2) + '%' :
         (yf.postMarketChangePercent != null ? (yf.postMarketChangePercent >= 0 ? '+' : '') + yf.postMarketChangePercent.toFixed(2) + '%' : '--'));
       
-      const pmVol = pm.premktVol > 0 ? pm.premktVol : (yf.preMarketVolume || yf.postMarketVolume || 0);
+      const pmVol = premktVol > 0 ? premktVol : (yf.preMarketVolume || yf.postMarketVolume || 0);
 
       const shares = yf.sharesOutstanding ? (yf.sharesOutstanding / 1000000) : (prof?.shareOutstanding || 0);
       const float = shares > 0

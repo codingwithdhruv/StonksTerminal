@@ -1,34 +1,44 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-
-const execAsync = promisify(exec);
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET() {
   try {
-    const scriptPath = path.resolve(process.cwd(), 'usefulRepos');
-    const { stdout } = await execAsync(`python3 -c "import sys; import json; sys.path.append('${scriptPath}'); from ycnbc import News; news = News(); trending = news.trending(); print(json.dumps(trending))"`);
+    const res = await axios.get('https://www.cnbc.com/', { 
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+      }
+    });
     
-    const parsed = JSON.parse(stdout);
-    if (!Array.isArray(parsed)) throw new Error('Invalid format from ycnbc');
+    const $ = cheerio.load(res.data);
+    const mapped: any[] = [];
     
-    const mapped = parsed.map((item, idx) => ({
-      id: `cnbc-${Date.now()}-${idx}`,
-      headline: item.headline || '',
-      summary: '',
-      url: item.link || '',
-      createdAt: new Date().toISOString(),
-      source: 'CNBC',
-      _timestamp: Date.now() - idx * 1000 // Fake timestamp for sorting
-    }));
-    
+    $('.TrendingNowItem-title').each((idx, el) => {
+      const a = $(el).closest('a');
+      const headline = $(el).text().trim();
+      let url = a.attr('href') || '';
+      if (url.startsWith('/')) url = 'https://www.cnbc.com' + url;
+      
+      if (headline && url) {
+        mapped.push({
+          id: `cnbc-${Date.now()}-${idx}`,
+          headline,
+          summary: '',
+          url,
+          createdAt: new Date().toISOString(),
+          source: 'CNBC',
+          _timestamp: Date.now() - idx * 1000
+        });
+      }
+    });
+
     return NextResponse.json({ data: mapped });
   } catch (error) {
-    console.error('ycnbc fetch error:', error);
-    return NextResponse.json({ error: 'Failed to fetch CNBC news' }, { status: 500 });
+    console.error('cnbc cheerio fetch error:', error);
+    return NextResponse.json({ error: 'Failed to fetch CNBC news via cheerio' }, { status: 500 });
   }
 }

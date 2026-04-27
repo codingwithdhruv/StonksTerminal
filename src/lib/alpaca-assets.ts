@@ -3,6 +3,7 @@ import axios from 'axios';
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
 const ALPACA_TRADING_URL = 'https://paper-api.alpaca.markets';
+const ALPACA_DATA_URL = 'https://data.alpaca.markets';
 
 const headers = {
   'APCA-API-KEY-ID': ALPACA_API_KEY_ID || '',
@@ -94,6 +95,38 @@ export async function fetchAlpacaAssets(symbols: string[]): Promise<Record<strin
   for (const sym of symbols) {
     const asset = cache.get(sym);
     if (asset) result[sym] = asset;
+  }
+  return result;
+}
+
+export interface AlpacaSnapshot {
+  latestTrade?: { p: number; t: string };
+  latestQuote?: { ap: number; bp: number; t: string };
+  minuteBar?: { c: number; v: number; t: string };
+  dailyBar?: { c: number; v: number; t: string };
+  prevDailyBar?: { c: number; v: number; t: string };
+}
+
+/** 
+ * Bulk fetch comprehensive snapshots from Alpaca 
+ * Replaces the need to fetch pre-market 1-min chunks manually.
+ */
+export async function fetchAlpacaSnapshots(symbols: string[]): Promise<Record<string, AlpacaSnapshot>> {
+  const result: Record<string, AlpacaSnapshot> = {};
+  if (symbols.length === 0) return result;
+
+  const BATCH = 50; // API may fail on very large URLs
+  for (let i = 0; i < symbols.length; i += BATCH) {
+    const batch = symbols.slice(i, i + BATCH);
+    try {
+      const res = await axios.get(`${ALPACA_DATA_URL}/v2/stocks/snapshots?symbols=${batch.join(',')}`, {
+        headers,
+        timeout: 10000,
+      });
+      Object.assign(result, res.data);
+    } catch (e) {
+      console.error('Alpaca snapshots fetch error:', (e as Error).message);
+    }
   }
   return result;
 }

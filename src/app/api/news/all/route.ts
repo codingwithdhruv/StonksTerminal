@@ -6,17 +6,19 @@ import { GET as getAlpaca } from '@/app/api/news/route';
 import { GET as getFinnhub } from '@/app/api/finnhub/route';
 import { GET as getYahooFinance } from '@/app/api/yahoo-finance/route';
 import { GET as getCnbc } from '@/app/api/news/cnbc/route';
+import { getTiingoNews } from '@/lib/tiingo';
 import { normalizeTimestamp, NewsItem } from '@/lib/news';
 
 export async function GET(request: Request) {
   try {
     // We create mock requests if needed, but the original request can be passed along.
     // However, Finnhub and YahooFinance GET don't take a request param in their current implementation.
-    const [alpacaRes, finnhubRes, yfRes, cnbcRes] = await Promise.allSettled([
+    const [alpacaRes, finnhubRes, yfRes, cnbcRes, tiingoNews] = await Promise.allSettled([
       getAlpaca(request),
       getFinnhub(),
       getYahooFinance(),
-      getCnbc()
+      getCnbc(),
+      getTiingoNews()
     ]);
 
     let allNews: NewsItem[] = [];
@@ -48,6 +50,10 @@ export async function GET(request: Request) {
       if (data.data) {
         allNews = allNews.concat((data.data as NewsItem[]).map(item => ({ ...item, source: item.source || 'CNBC' })));
       }
+    }
+
+    if (tiingoNews.status === 'fulfilled' && tiingoNews.value.length > 0) {
+      allNews = allNews.concat(tiingoNews.value);
     }
 
     // Deduplicate and normalize timings
