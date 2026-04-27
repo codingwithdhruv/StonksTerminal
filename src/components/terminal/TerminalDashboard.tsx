@@ -347,7 +347,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
     : 'border-slate-500/30 text-slate-400 bg-slate-500/10';
 
   return (
-    <div className="flex h-full flex-col p-4 sm:p-6 lg:p-8 relative">
+    <div className="flex h-full flex-col p-4 sm:p-6 lg:p-8 relative overflow-hidden bg-[#020408]">
       <div className="noise-overlay" />
 
       {/* Header section with refined typography and spacing */}
@@ -521,8 +521,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1 }}
-          className="flex-[1.2] min-h-[400px] flex flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40"
+          className="flex-1 min-h-0 flex flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40 border border-white/5"
         >
           <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-3">
             <div className="flex items-center gap-3">
@@ -720,7 +719,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="flex-1 min-h-[350px] flex flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40"
+          className="flex-1 min-h-0 flex flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40"
         >
           <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-3">
             <div className="flex items-center gap-3">
