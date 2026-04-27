@@ -140,6 +140,13 @@ function TradingViewWidget({ symbol }: { symbol: string }) {
   );
 }
 
+function decodeHtml(html: string) {
+  if (!html) return '';
+  const txt = document.createElement('textarea');
+  txt.innerHTML = html;
+  return txt.value;
+}
+
 export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
   const [gappers, setGappers] = useState<Gapper[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -201,6 +208,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
 
   useEffect(() => {
     document.documentElement.classList.add('dark');
+    setLoading(true);
     const fetchData = async () => {
       try {
         const marketUrl = categorySlug ? `/api/market/sector?sector=${categorySlug}` : '/api/market';
@@ -212,14 +220,8 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
 
         setGappers(marketData.data || []);
 
-        const incomingNews: NewsItem[] = incomingNewsData.data || [];
-        setNews(prevNews => {
-          const newMap = new Map(prevNews.map(n => [n.id.toString(), n]));
-          incomingNews.forEach((n: NewsItem) => {
-            if (!newMap.has(n.id.toString())) newMap.set(n.id.toString(), n);
-          });
-          return Array.from(newMap.values());
-        });
+        // Replace news on category change, or append on periodic refresh
+        setNews(incomingNews);
       } catch (error) {
         console.error('Error fetching data', error);
       } finally {
@@ -778,7 +780,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                       rel="noreferrer"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 + idx * 0.05 }}
+                      transition={{ delay: 0.1 + Math.min(idx, 10) * 0.03 }}
                       className="flex gap-4 p-5 hover:bg-white/[0.02] transition-all border-b border-white/[0.02] group"
                     >
                       {/* Thumbnail with overlay */}
@@ -814,7 +816,7 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                           ))}
                         </div>
                         <div className="font-bold text-slate-100 group-hover:text-primary transition-colors text-sm sm:text-base leading-tight tracking-tight">
-                          {decodeHtml(item.headline)}
+                          {decodeHtml(item.headline) || 'Breaking Intelligence Signal'}
                         </div>
                         {item.summary && (
                           <div className="text-xs text-muted-foreground/80 line-clamp-2 leading-relaxed font-medium">
