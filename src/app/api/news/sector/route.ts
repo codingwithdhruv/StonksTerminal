@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import axios from 'axios';
 import { categorizeNews, getCategoryLabel, normalizeTimestamp, NewsItem, NEWS_PLACEHOLDER } from '@/lib/news';
 

@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import { GET as getAlpaca } from '@/app/api/news/route';
 import { GET as getFinnhub } from '@/app/api/finnhub/route';
 import { GET as getSeekingAlpha } from '@/app/api/seeking-alpha/route';

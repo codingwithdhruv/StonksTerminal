@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import axios from 'axios';
 import { fetchDynamicEtfs, classifyTheme, formatGrowth } from '@/lib/market';
 import { fetchAlpacaAssets } from '@/lib/alpaca-assets';
 import { getProfiles, getMetrics, getCatalysts, fetchPreMarketBars } from '@/lib/finnhub-cache';
-import yahooFinance from 'yahoo-finance2';
+import yahooFinance2 from 'yahoo-finance2';
+// @ts-ignore
+const yahooFinance = typeof yahooFinance2 === 'function' ? new yahooFinance2() : (yahooFinance2.default ? new yahooFinance2.default() : yahooFinance2);
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
@@ -264,7 +269,7 @@ export async function GET() {
     const [preMarketData, sparklines, yfQuotes] = await Promise.all([
       fetchPreMarketBars(symbols, prevCloses),
       fetchSparklines(symbols),
-      (yahooFinance as any).quote(symbols).catch((e: any) => {
+      yahooFinance.quote(symbols).catch((e: any) => {
         console.error('Yahoo Finance quote fetch error:', e.message);
         return [];
       })
