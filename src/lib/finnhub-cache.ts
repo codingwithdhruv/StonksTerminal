@@ -65,28 +65,64 @@ export async function getProfile(symbol: string): Promise<FinnhubProfile | null>
   }
 }
 
-/** Fetch Finnhub company-news headline (catalyst) with 10min cache */
-export async function getCatalyst(symbol: string): Promise<string> {
-  const cached = catalystCache.get(symbol);
-  if (cached && Date.now() < cached.expiry) return cached.data;
-  if (!FINNHUB_API_KEY || !canCall()) return cached?.data ?? '';
+const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
+const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
+const ALPACA_DATA_URL = process.env.ALPACA_DATA_URL || 'https://data.alpaca.markets';
 
-  const today = new Date().toISOString().split('T')[0];
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+/**
+ * Fetch catalyst headlines using Alpaca's multi-symbol news endpoint.
+ * ONE API call returns headlines for ALL symbols (vs 88 Finnhub calls).
+ * This is the primary catalyst source — Finnhub company-news is no longer used per-symbol.
+ */
+export async function getCatalystsFromAlpaca(symbols: string[]): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  if (symbols.length === 0) return result;
+
+  // Check cache first
+  const uncached: string[] = [];
+  for (const sym of symbols) {
+    const cached = catalystCache.get(sym);
+    if (cached && Date.now() < cached.expiry) {
+      if (cached.data) result[sym] = cached.data;
+    } else {
+      uncached.push(sym);
+    }
+  }
+  if (uncached.length === 0) return result;
 
   try {
-    const res = await axios.get(
-      `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${weekAgo}&to=${today}&token=${FINNHUB_API_KEY}`,
-      { timeout: 5000, validateStatus: () => true }
-    );
-    updateRateLimit(res.headers as Record<string, string>);
-    const news = res.data;
-    const headline = (Array.isArray(news) && news.length > 0) ? (news[0].headline || '') : '';
-    catalystCache.set(symbol, { data: headline, expiry: Date.now() + CATALYST_TTL });
-    return headline;
-  } catch {
-    return cached?.data ?? '';
+    // Alpaca news supports up to ~50 symbols per request; chunk to avoid URL length issues
+    const CHUNK = 40;
+    for (let i = 0; i < uncached.length; i += CHUNK) {
+      const batch = uncached.slice(i, i + CHUNK);
+      const res = await axios.get(
+        `${ALPACA_DATA_URL}/v1beta1/news?symbols=${batch.join(',')}&limit=50&sort=desc`,
+        {
+          headers: {
+            'APCA-API-KEY-ID': ALPACA_API_KEY_ID || '',
+            'APCA-API-SECRET-KEY': ALPACA_API_SECRET_KEY || '',
+          },
+          timeout: 10000,
+        }
+      );
+      const news: Array<{ headline?: string; symbols?: string[] }> = res.data?.news || [];
+      for (const article of news) {
+        if (!article.headline || !article.symbols) continue;
+        for (const sym of article.symbols) {
+          if (batch.includes(sym) && !result[sym]) {
+            result[sym] = article.headline;
+          }
+        }
+      }
+    }
+    // Cache all (including misses as empty so we don't refetch immediately)
+    for (const sym of uncached) {
+      catalystCache.set(sym, { data: result[sym] || '', expiry: Date.now() + CATALYST_TTL });
+    }
+  } catch (e) {
+    console.error('Alpaca news catalyst fetch error:', (e as Error).message);
   }
+  return result;
 }
 
 /** Batch fetch profiles for many symbols, parallel-but-throttled */
@@ -106,19 +142,5 @@ export async function getProfiles(symbols: string[]): Promise<Record<string, Fin
   return result;
 }
 
-/** Batch fetch catalysts for many symbols */
-export async function getCatalysts(symbols: string[]): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
-  const BATCH = 5;
-  for (let i = 0; i < symbols.length; i += BATCH) {
-    const batch = symbols.slice(i, i + BATCH);
-    const batchResults = await Promise.all(batch.map(sym => getCatalyst(sym).then(c => ({ sym, c }))));
-    for (const { sym, c } of batchResults) {
-      if (c) result[sym] = c;
-    }
-    if (i + BATCH < symbols.length && rateLimitRemaining < 30) {
-      await new Promise(r => setTimeout(r, 100));
-    }
-  }
-  return result;
-}
+/** Backward-compat alias — now uses Alpaca news (1 call vs 88 Finnhub calls) */
+export const getCatalysts = getCatalystsFromAlpaca;
