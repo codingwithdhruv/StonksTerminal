@@ -71,7 +71,7 @@ async function getEtfSymbols(): Promise<Set<string>> {
 
 /**
  * Fetch missing metrics (Short Interest, Revenue Growth, EPS Growth) using Yahoo Finance quoteSummary.
- * We limit this to the top 20 symbols to avoid rate limits and keep the API fast.
+ * We fetch in batches to avoid excessive Yahoo Finance rate limiting.
  */
 async function fetchYFMetrics(symbols: string[]): Promise<{
   metrics: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string }>;
@@ -79,27 +79,33 @@ async function fetchYFMetrics(symbols: string[]): Promise<{
   const metrics: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string }> = {};
   if (symbols.length === 0) return { metrics };
 
-  // Limit to top 20 to avoid excessive Yahoo Finance rate limiting
-  const targetSymbols = symbols.slice(0, 20);
+  const CHUNK_SIZE = 15;
+  for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
+    const chunk = symbols.slice(i, i + CHUNK_SIZE);
+    
+    await Promise.allSettled(
+      chunk.map(async (sym) => {
+        try {
+          const result = await yahooFinance.quoteSummary(sym, { modules: ['defaultKeyStatistics', 'financialData'] });
+          const shortPctRaw = result.defaultKeyStatistics?.shortPercentOfFloat;
+          const revGrowthRaw = result.financialData?.revenueGrowth;
+          const epsGrowthRaw = result.financialData?.earningsGrowth;
 
-  await Promise.allSettled(
-    targetSymbols.map(async (sym) => {
-      try {
-        const result = await yahooFinance.quoteSummary(sym, { modules: ['defaultKeyStatistics', 'financialData'] });
-        const shortPctRaw = result.defaultKeyStatistics?.shortPercentOfFloat;
-        const revGrowthRaw = result.financialData?.revenueGrowth;
-        const epsGrowthRaw = result.financialData?.earningsGrowth;
-
-        metrics[sym] = {
-          shortPct: shortPctRaw != null ? (shortPctRaw * 100).toFixed(2) + '%' : undefined,
-          revGrowth: revGrowthRaw != null ? (revGrowthRaw >= 0 ? '+' : '') + (revGrowthRaw * 100).toFixed(1) + '%' : undefined,
-          epsGrowth: epsGrowthRaw != null ? (epsGrowthRaw >= 0 ? '+' : '') + (epsGrowthRaw * 100).toFixed(1) + '%' : undefined,
-        };
-      } catch (e) {
-        console.error(`Yahoo Finance quoteSummary error for ${sym}:`, (e as Error).message);
-      }
-    })
-  );
+          metrics[sym] = {
+            shortPct: shortPctRaw != null ? (shortPctRaw * 100).toFixed(2) + '%' : undefined,
+            revGrowth: revGrowthRaw != null ? (revGrowthRaw >= 0 ? '+' : '') + (revGrowthRaw * 100).toFixed(1) + '%' : undefined,
+            epsGrowth: epsGrowthRaw != null ? (epsGrowthRaw >= 0 ? '+' : '') + (epsGrowthRaw * 100).toFixed(1) + '%' : undefined,
+          };
+        } catch (e) {
+          // Suppress errors for symbols that Yahoo doesn't track properly (like Warrants/Rights)
+        }
+      })
+    );
+    
+    if (i + CHUNK_SIZE < symbols.length) {
+      await new Promise(r => setTimeout(r, 200)); // Yield to prevent rate limit
+    }
+  }
 
   return { metrics };
 }
