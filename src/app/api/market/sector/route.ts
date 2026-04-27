@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { classifyTheme, formatGrowth } from '@/lib/market';
 import { fetchAlpacaAssets, AlpacaAsset } from '@/lib/alpaca-assets';
-import { getProfiles, getCatalysts } from '@/lib/finnhub-cache';
+import { getProfiles, getMetrics, getCatalysts, fetchPreMarketBars } from '@/lib/finnhub-cache';
 
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
@@ -18,11 +18,6 @@ interface AlpacaSnapshot {
   latestTrade?: { p: number };
   dailyBar?: { c: number; v: number };
   prevDailyBar?: { c: number };
-}
-
-interface YFPreMarket {
-  premktChgPct: string;
-  premktVol: number;
 }
 
 /**
@@ -72,46 +67,6 @@ async function fetchSparklines(symbols: string[]): Promise<Record<string, number
     }
   } catch (e) {
     console.error('Sparkline fetch error (sector):', (e as Error).message);
-  }
-  return result;
-}
-
-/** Fetch pre-market % change and volume from Yahoo Finance */
-async function fetchPreMarketData(symbols: string[]): Promise<Record<string, YFPreMarket>> {
-  const result: Record<string, YFPreMarket> = {};
-  if (!RAPIDAPI_KEY || symbols.length === 0) return result;
-
-  for (let i = 0; i < symbols.length; i += 30) {
-    const batch = symbols.slice(i, i + 30);
-    try {
-      const res = await axios.get(
-        `https://apidojo-yahoo-finance-v1.p.rapidapi.com/market/v2/get-quotes?region=US&symbols=${batch.join(',')}`,
-        {
-          headers: {
-            'x-rapidapi-key': RAPIDAPI_KEY,
-            'x-rapidapi-host': 'apidojo-yahoo-finance-v1.p.rapidapi.com',
-          },
-          timeout: 10000,
-        }
-      );
-      const quotes: Array<{
-        symbol?: string;
-        preMarketChangePercent?: number | null;
-        preMarketVolume?: number | null;
-      }> = res.data?.quoteResponse?.result || [];
-
-      for (const q of quotes) {
-        if (!q.symbol) continue;
-        const pct = q.preMarketChangePercent;
-        result[q.symbol] = {
-          premktChgPct: pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '--',
-          premktVol: q.preMarketVolume ?? 0,
-        };
-      }
-    } catch (e) {
-      console.error('YF pre-market error (sector):', (e as Error).message);
-    }
-    if (i + 30 < symbols.length) await new Promise(r => setTimeout(r, 200));
   }
   return result;
 }
@@ -254,24 +209,36 @@ export async function GET(request: Request) {
       return NextResponse.json({ data: [] });
     }
 
-    // 6. Fetch SA metrics (graceful degradation on quota exceeded)
+    // 6. Fetch Finnhub metrics (revGrowth, epsGrowth, mktCap fallback) — 24h cached
+    const finnhubMetrics = await getMetrics(sectorSymbols.filter(s => finnhubEligible.includes(s)));
+
+    // 7. Fetch SA metrics (graceful degradation on quota exceeded)
     const saMetrics = await fetchSAMetrics(sectorSymbols);
 
-    // 7. Fetch catalysts (cached 10min)
+    // 8. Fetch catalysts (cached 10min)
     const catalysts = await getCatalysts(sectorSymbols);
 
-    // 8. Fetch pre-market data + sparklines in parallel
+    // 9. Build prevClose map for pre-market calculation
+    const prevCloses: Record<string, number> = {};
+    for (const sym of sectorSymbols) {
+      const snap = snapshots[sym];
+      if (snap?.prevDailyBar?.c) prevCloses[sym] = snap.prevDailyBar.c;
+    }
+
+    // 10. Fetch pre-market + sparklines in parallel
+    //     Pre-market: Alpaca minute bars 4AM-9:30AM ET (free, returns {} outside window)
     const [preMarketData, sparklines] = await Promise.all([
-      fetchPreMarketData(sectorSymbols),
+      fetchPreMarketBars(sectorSymbols, prevCloses),
       fetchSparklines(sectorSymbols),
     ]);
 
-    // 9. Build result
+    // 11. Build result
     const stocks = sectorSymbols.map((sym) => {
       const snap = snapshots[sym];
       const prof = profiles[sym];
       const asset: AlpacaAsset | undefined = alpacaAssets[sym];
       const sa = saMetrics[sym] || {};
+      const fMetrics = finnhubMetrics[sym] || null;
       const pm = preMarketData[sym] || { premktChgPct: '--', premktVol: 0 };
 
       let price = 0, prevClose = 0, changePct = 0;
@@ -290,6 +257,7 @@ export async function GET(request: Request) {
       else if (Math.abs(changePct) > 2) grade = 'C';
 
       let mktCapVal = prof?.marketCapitalization || 0;
+      if (mktCapVal === 0 && fMetrics?.marketCapitalization) mktCapVal = fMetrics.marketCapitalization;
       if (mktCapVal === 0 && sa.saMktCap) mktCapVal = sa.saMktCap / 1000000;
       const mktCap = mktCapVal > 0
         ? (mktCapVal >= 1000 ? (mktCapVal / 1000).toFixed(2) + 'B' : mktCapVal.toFixed(0) + 'M')
@@ -325,8 +293,13 @@ export async function GET(request: Request) {
         theme,
         industry,
         category: stockCategory,
-        revGrowth: sa.revGrowth || '--',
-        epsGrowth: sa.epsGrowth || '--',
+        // revGrowth/epsGrowth: SA (quota exceeded) → Finnhub metric (free, TTM YoY %)
+        revGrowth: sa.revGrowth || (fMetrics?.revenueGrowthTTMYoy != null
+          ? (fMetrics.revenueGrowthTTMYoy >= 0 ? '+' : '') + fMetrics.revenueGrowthTTMYoy.toFixed(1) + '%'
+          : '--'),
+        epsGrowth: sa.epsGrowth || (fMetrics?.epsGrowthTTMYoy != null
+          ? (fMetrics.epsGrowthTTMYoy >= 0 ? '+' : '') + fMetrics.epsGrowthTTMYoy.toFixed(1) + '%'
+          : '--'),
         catalyst: catalysts[sym] || '--',
       };
     }).filter(Boolean);
