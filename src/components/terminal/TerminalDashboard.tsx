@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -8,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Activity, Newspaper, BrainCircuit, Filter, Clock, Globe, X,
   Star, Download, SlidersHorizontal, TrendingUp, ChevronDown,
-  Search, BarChart2
+  Search, BarChart2, Zap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NewsItem, formatNewsTime, getSentiment } from '@/lib/news';
@@ -320,37 +321,66 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
     : 'border-slate-500/30 text-slate-400 bg-slate-500/10';
 
   return (
-    <div className="flex h-full flex-col p-2 sm:p-4 font-mono text-xs sm:text-sm tracking-tight text-slate-300">
+    <div className="flex h-full flex-col p-4 sm:p-6 font-sans text-[11px] sm:text-xs tracking-tight text-slate-300 selection:bg-primary/20">
 
       {/* Header */}
-      <header className="mb-2 sm:mb-3 flex flex-col sm:flex-row items-start sm:items-center justify-between pb-2 gap-2 border-b border-border/60">
-        <div>
-          <h1 className="text-sm sm:text-lg font-black uppercase tracking-widest text-primary">
-            {categorySlug ? `${categorySlug.charAt(0).toUpperCase() + categorySlug.slice(1)} Dashboard` : 'Global Overview'}
-          </h1>
-          <p className="text-[10px] text-muted-foreground mt-1.5 hidden sm:block tracking-wide">
-            {filteredGappers.length} movers · {filteredNews.length} signals · Auto-refresh 60s
+      <motion.header 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 gap-4 border-b border-white/5"
+      >
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Zap className="h-5 w-5 text-primary fill-primary/10" />
+            <h1 className="text-xl sm:text-2xl font-unbounded font-black uppercase tracking-tighter text-foreground">
+              {categorySlug ? categorySlug : 'Terminal'} <span className="text-primary">PRO</span>
+            </h1>
+          </div>
+          <p className="text-[10px] text-muted-foreground/60 tracking-[0.2em] font-medium uppercase">
+            {filteredGappers.length} High-Impact Movers · {filteredNews.length} Intelligence Signals · <span className="text-emerald-500/80">Real-Time Sync</span>
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/10">
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
             <Activity className="h-3 w-3 animate-pulse text-emerald-400" />
-            <span className="text-[10px] font-bold text-emerald-400">LIVE</span>
+            <span className="text-[10px] font-black tracking-widest text-emerald-400">LIVE FEED</span>
           </div>
-          <Button variant="outline" size="sm" className="h-7 text-[10px] border-primary/20 bg-primary/5 hover:bg-primary/15 text-primary gap-1"
-            onClick={() => setShowFilters(f => !f)}>
-            <Filter className="h-3 w-3" /> Filters {showFilters && '▲' || '▼'}
+          
+          <div className="h-8 w-px bg-white/5 mx-1 hidden sm:block" />
+
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-9 rounded-xl border-white/5 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/10 text-[11px] font-bold gap-2 transition-all"
+            onClick={() => setShowFilters(f => !f)}
+          >
+            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+            Filters {showFilters ? '▲' : '▼'}
           </Button>
-          <Button variant="outline" size="sm" className="h-7 text-[10px] border-border/40 gap-1" onClick={exportCSV}>
-            <Download className="h-3 w-3" /> <span className="hidden sm:inline">Export CSV</span>
+
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-9 rounded-xl border-white/5 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/10 text-[11px] font-bold gap-2 transition-all"
+            onClick={exportCSV}
+          >
+            <Download className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="hidden sm:inline">Export</span>
           </Button>
-          <Button variant="outline" size="sm" className="h-7 text-[10px] border-primary/20 bg-primary/5 hover:bg-primary/15 text-primary gap-1"
-            onClick={handleSummarize} disabled={isSummarizing || filteredNews.length === 0}>
-            <BrainCircuit className="h-3 w-3" />
+
+          <Button 
+            variant="default" 
+            size="sm" 
+            className="h-9 rounded-xl bg-primary text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20 text-[11px] font-black gap-2 transition-all px-4"
+            onClick={handleSummarize} 
+            disabled={isSummarizing || filteredNews.length === 0}
+          >
+            <BrainCircuit className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{isSummarizing ? 'Analyzing…' : 'Intelligence Brief'}</span>
           </Button>
         </div>
-      </header>
+      </motion.header>
 
       {/* Filter Bar */}
       {showFilters && (
@@ -389,77 +419,93 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
         </div>
       )}
 
-      {/* Stacked Layout */}
-      <div className="flex min-h-0 flex-1 flex-col gap-2 sm:gap-3">
+      {/* Stacked Layout Container */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
 
         {/* ── Market Movers Table ── */}
-        <div className="flex min-h-[200px] h-[46%] flex-col rounded-lg border border-border/60 bg-card/20">
-          <div className="flex items-center justify-between border-b border-border/60 bg-muted/15 px-3 py-1.5">
-            <div className="flex items-center gap-2">
-              <BarChart2 className="h-3.5 w-3.5 text-primary" />
-              <span className="font-bold text-xs uppercase tracking-widest text-foreground">
-                Market Movers {categorySlug ? `· ${categorySlug}` : ''}
-              </span>
-              <span className="text-[10px] text-muted-foreground">({filteredGappers.length})</span>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.1 }}
+          className="flex min-h-[300px] h-[48%] flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40"
+        >
+          <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 rounded-lg bg-primary/10 border border-primary/20">
+                <BarChart2 className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <span className="font-unbounded text-[10px] font-black uppercase tracking-widest text-foreground">
+                  Market Movers {categorySlug ? `// ${categorySlug}` : ''}
+                </span>
+                <p className="text-[9px] text-muted-foreground/60 uppercase font-medium mt-0.5">
+                  {filteredGappers.length} active symbols detected
+                </p>
+              </div>
             </div>
             <div className="relative" ref={colChooserRef}>
               <button onClick={() => setShowColChooser(s => !s)}
-                className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary px-2 py-1 rounded border border-border/40 hover:border-primary/40">
-                <SlidersHorizontal className="h-3 w-3" /> Columns <ChevronDown className="h-2.5 w-2.5" />
+                className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground hover:text-primary px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.03] hover:bg-white/[0.08] transition-all">
+                <SlidersHorizontal className="h-3.5 w-3.5" /> Columns <ChevronDown className={cn("h-3 w-3 transition-transform", showColChooser && "rotate-180")} />
               </button>
-              {showColChooser && (
-                <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-2xl p-3 grid grid-cols-2 gap-1.5 w-64">
-                  {ALL_COLUMNS.map(col => (
-                    <label key={col.key} className="flex items-center gap-1.5 text-[10px] cursor-pointer hover:text-primary">
-                      <input type="checkbox" checked={isColVisible(col.key)} onChange={() => toggleCol(col.key)}
-                        className="accent-primary h-3 w-3" />
-                      {col.label}
-                    </label>
-                  ))}
-                </div>
-              )}
+              <AnimatePresence>
+                {showColChooser && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 top-full mt-2 z-50 bg-slate-900 border border-white/10 rounded-xl shadow-2xl p-4 grid grid-cols-2 gap-2 w-72 backdrop-blur-xl"
+                  >
+                    {ALL_COLUMNS.map(col => (
+                      <label key={col.key} className="flex items-center gap-2 text-[10px] font-medium cursor-pointer hover:text-primary transition-colors py-1">
+                        <input type="checkbox" checked={isColVisible(col.key)} onChange={() => toggleCol(col.key)}
+                          className="accent-primary h-3.5 w-3.5 rounded border-white/10" />
+                        {col.label}
+                      </label>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto scrollbar-thin">
             <div className="min-w-max">
               {/* Header row */}
-              <div className="sticky top-0 z-20 flex bg-slate-900/95 border-b border-border/60 text-[10px] font-bold text-slate-300 uppercase tracking-wider">
+              <div className="sticky top-0 z-20 flex bg-slate-950/80 backdrop-blur-md border-b border-white/5 text-[9px] font-black text-muted-foreground uppercase tracking-[0.15em]">
                 {/* Sticky ticker header */}
-                <div className="sticky left-0 z-30 bg-slate-950 flex items-center px-3 py-2 w-28 shrink-0 border-r border-white/[0.06] shadow-[2px_0_6px_rgba(0,0,0,0.5)]">
-                  <Star className="h-3 w-3 mr-1.5 text-muted-foreground/40" /> TICKER
+                <div className="sticky left-0 z-30 bg-slate-950/90 flex items-center px-4 py-3 w-32 shrink-0 border-r border-white/5">
+                  TICKER
                 </div>
-                {isColVisible('premkt') && <div className="w-24 shrink-0 text-right px-2 py-2">PREMKT %</div>}
-                {isColVisible('premktVol') && <div className="w-24 shrink-0 text-right px-2 py-2">PREMKT VOL</div>}
-                {isColVisible('chg') && <div className="w-20 shrink-0 text-right px-2 py-2">CHG %</div>}
-                {isColVisible('sparkline') && <div className="w-16 shrink-0 text-center px-2 py-2">SPARK</div>}
-                {isColVisible('vol') && <div className="w-24 shrink-0 text-right px-2 py-2">VOL (1D)</div>}
-                {isColVisible('price') && <div className="w-20 shrink-0 text-right px-2 py-2">PRICE</div>}
-                {isColVisible('prevClose') && <div className="w-24 shrink-0 text-right px-2 py-2">PREV CLOSE</div>}
-                {isColVisible('mktCap') && <div className="w-20 shrink-0 text-right px-2 py-2">MKT CAP</div>}
-                {isColVisible('capSize') && <div className="w-16 shrink-0 text-center px-2 py-2">CAP SIZE</div>}
-                {isColVisible('float') && <div className="w-20 shrink-0 text-right px-2 py-2">FLOAT</div>}
-                {isColVisible('shortPct') && <div className="w-20 shrink-0 text-right px-2 py-2">SHORT %</div>}
-                {isColVisible('theme') && <div className="w-28 shrink-0 px-2 py-2">THEME</div>}
-                {isColVisible('industry') && <div className="w-28 shrink-0 px-2 py-2">INDUSTRY</div>}
-                {isColVisible('category') && <div className="w-20 shrink-0 text-center px-2 py-2">CATEGORY</div>}
-                {isColVisible('grade') && <div className="w-16 shrink-0 text-center px-2 py-2">GRADE</div>}
-                {isColVisible('revGrowth') && <div className="w-24 shrink-0 text-right px-2 py-2">REV GROWTH</div>}
-                {isColVisible('epsGrowth') && <div className="w-24 shrink-0 text-right px-2 py-2">EPS GROWTH</div>}
-                {isColVisible('catalyst') && <div className="flex-1 min-w-[400px] px-4 py-2">CATALYST / KEY DEVELOPMENTS</div>}
+                {isColVisible('premkt') && <div className="w-24 shrink-0 text-right px-3 py-3">PREMKT %</div>}
+                {isColVisible('premktVol') && <div className="w-28 shrink-0 text-right px-3 py-3">PREMKT VOL</div>}
+                {isColVisible('chg') && <div className="w-24 shrink-0 text-right px-3 py-3">CHG %</div>}
+                {isColVisible('sparkline') && <div className="w-20 shrink-0 text-center px-3 py-3">SPARK</div>}
+                {isColVisible('vol') && <div className="w-28 shrink-0 text-right px-3 py-3">VOL (1D)</div>}
+                {isColVisible('price') && <div className="w-24 shrink-0 text-right px-3 py-3">PRICE</div>}
+                {isColVisible('prevClose') && <div className="w-28 shrink-0 text-right px-3 py-3">PREV CLOSE</div>}
+                {isColVisible('mktCap') && <div className="w-24 shrink-0 text-right px-3 py-3">MKT CAP</div>}
+                {isColVisible('capSize') && <div className="w-20 shrink-0 text-center px-3 py-3">SIZE</div>}
+                {isColVisible('float') && <div className="w-24 shrink-0 text-right px-3 py-3">FLOAT</div>}
+                {isColVisible('shortPct') && <div className="w-24 shrink-0 text-right px-3 py-3">SHORT %</div>}
+                {isColVisible('theme') && <div className="w-32 shrink-0 px-3 py-3">THEME</div>}
+                {isColVisible('grade') && <div className="w-20 shrink-0 text-center px-3 py-3">GRADE</div>}
+                {isColVisible('catalyst') && <div className="flex-1 min-w-[450px] px-6 py-3">INTELLIGENCE / CATALYST</div>}
               </div>
 
               {/* Rows */}
-              <div className="flex flex-col divide-y divide-border/20">
+              <div className="flex flex-col">
                 {loading ? (
-                  Array(8).fill(0).map((_, i) => (
-                    <div key={i} className="flex px-3 py-2">
-                      <Skeleton className="h-4 w-full bg-muted/30" />
+                  Array(10).fill(0).map((_, i) => (
+                    <div key={i} className="flex px-4 py-3 border-b border-white/[0.02]">
+                      <Skeleton className="h-4 w-full bg-white/[0.03] rounded-full" />
                     </div>
                   ))
                 ) : filteredGappers.length === 0 ? (
-                  <div className="p-6 text-center text-muted-foreground text-xs">
-                    No movers{categorySlug ? ` for ${categorySlug}` : ''} match current filters.
+                  <div className="p-12 text-center">
+                    <p className="text-muted-foreground/60 text-xs font-medium italic">
+                      No movers detected matching these constraints.
+                    </p>
                   </div>
                 ) : (
                   filteredGappers.map((g, idx) => {
@@ -469,413 +515,481 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
                     const isWatched = watchlist.has(g.symbol);
 
                     return (
-                      <div
+                      <motion.div
                         key={g.symbol}
+                        initial={{ opacity: 0, x: -5 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.1 + idx * 0.02 }}
                         className={cn(
-                          'flex items-center text-[11px] cursor-pointer border-l-2 border-transparent transition-colors group/row',
-                          idx % 2 === 0 ? 'bg-transparent' : 'bg-white/[0.025]',
-                          'hover:bg-primary/10 hover:border-primary/60',
-                          selectedStock?.symbol === g.symbol && 'bg-primary/12 border-primary'
+                          'flex items-center text-[11px] font-mono cursor-pointer border-l-2 border-transparent transition-all duration-300 group/row',
+                          idx % 2 === 0 ? 'bg-transparent' : 'bg-white/[0.01]',
+                          'hover:bg-primary/5 hover:border-primary/40',
+                          selectedStock?.symbol === g.symbol && 'bg-primary/10 border-primary shadow-[inset_4px_0_12px_rgba(112,255,155,0.05)]'
                         )}
                         onClick={() => setSelectedStock(g)}
                       >
-                        {/* Sticky TICKER cell — same bg as row, subtle right separator */}
+                        {/* Sticky TICKER cell */}
                         <div className={cn(
-                          'sticky left-0 z-10 flex items-center gap-1.5 px-3 py-2.5 w-28 shrink-0 font-bold text-slate-100',
-                          'border-r border-white/[0.06] shadow-[2px_0_6px_rgba(0,0,0,0.5)]',
-                          idx % 2 === 0 ? 'bg-[#080810]' : 'bg-[#0c0c18]',
-                          selectedStock?.symbol === g.symbol && '!bg-primary/15'
+                          'sticky left-0 z-10 flex items-center gap-2.5 px-4 py-3.5 w-32 shrink-0 font-black text-slate-100',
+                          'border-r border-white/5 transition-colors',
+                          idx % 2 === 0 ? 'bg-slate-950' : 'bg-slate-900/40',
+                          selectedStock?.symbol === g.symbol && '!bg-slate-900',
+                          'group-hover/row:bg-slate-900'
                         )}>
                           <button
                             onClick={e => { e.stopPropagation(); toggleWatchlist(g.symbol); }}
-                            className="shrink-0"
+                            className="shrink-0 transition-transform active:scale-75"
                           >
-                            <Star className={cn('h-3 w-3', isWatched ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30 hover:text-amber-400')} />
+                            <Star className={cn('h-3.5 w-3.5', isWatched ? 'fill-amber-400 text-amber-400' : 'text-white/10 hover:text-amber-400')} />
                           </button>
-                          {g.logo && (
-                            <img src={g.logo} alt="" className="h-4 w-4 rounded-sm shrink-0"
-                              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                          )}
-                          <span className="truncate">{g.symbol}</span>
+                          <span className="truncate tracking-tight font-unbounded text-[10px]">{g.symbol}</span>
                         </div>
 
                         {isColVisible('premkt') && (
-                          <div className={cn('w-24 shrink-0 text-right px-2 py-2.5 font-semibold',
+                          <div className={cn('w-24 shrink-0 text-right px-3 py-3 font-bold',
                             isPremktUp ? 'text-emerald-400' : isPremktDown ? 'text-rose-400' : 'text-slate-500')}>
                             {g.premktChgPct || '--'}
                           </div>
                         )}
                         {isColVisible('premktVol') && (
-                          <div className="w-24 shrink-0 text-right px-2 py-2.5 text-slate-400">
+                          <div className="w-28 shrink-0 text-right px-3 py-3 text-slate-400 tabular-nums">
                             {g.premktVol ? formatVolume(g.premktVol) : '--'}
                           </div>
                         )}
                         {isColVisible('chg') && (
-                          <div className={cn('w-20 shrink-0 text-right px-2 py-2.5 font-semibold', isUp ? 'text-emerald-400' : 'text-rose-400')}>
+                          <div className={cn('w-24 shrink-0 text-right px-3 py-3 font-bold', isUp ? 'text-emerald-400' : 'text-rose-400')}>
                             {isUp ? '+' : ''}{g.changePct}%
                           </div>
                         )}
                         {isColVisible('sparkline') && (
-                          <div className="w-16 shrink-0 flex justify-center items-center py-1">
+                          <div className="w-20 shrink-0 flex justify-center items-center py-2">
                             <Sparkline data={g.sparkline || []} isUp={isUp} />
                           </div>
                         )}
                         {isColVisible('vol') && (
-                          <div className="w-24 shrink-0 text-right px-2 py-2.5 text-slate-400">{formatVolume(g.volume)}</div>
+                          <div className="w-28 shrink-0 text-right px-3 py-3 text-slate-400 tabular-nums">{formatVolume(g.volume)}</div>
                         )}
                         {isColVisible('price') && (
-                          <div className="w-20 shrink-0 text-right px-2 py-2.5 text-slate-200 font-semibold">${g.price.toFixed(2)}</div>
+                          <div className="w-24 shrink-0 text-right px-3 py-3 text-slate-100 font-bold tabular-nums">${g.price.toFixed(2)}</div>
                         )}
                         {isColVisible('prevClose') && (
-                          <div className="w-24 shrink-0 text-right px-2 py-2.5 text-slate-400">${g.prevClose.toFixed(2)}</div>
+                          <div className="w-28 shrink-0 text-right px-3 py-3 text-slate-500 tabular-nums">${g.prevClose.toFixed(2)}</div>
                         )}
                         {isColVisible('mktCap') && (
-                          <div className="w-20 shrink-0 text-right px-2 py-2.5 text-slate-300">{g.mktCap || '--'}</div>
+                          <div className="w-24 shrink-0 text-right px-3 py-3 text-slate-300 tabular-nums">{g.mktCap || '--'}</div>
                         )}
                         {isColVisible('capSize') && (
-                          <div className="w-16 shrink-0 text-center px-2 py-2.5 text-slate-400">{g.capSize || '--'}</div>
+                          <div className="w-20 shrink-0 text-center px-3 py-3">
+                            <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5 text-slate-400 text-[9px] font-bold">
+                              {g.capSize || '--'}
+                            </span>
+                          </div>
                         )}
                         {isColVisible('float') && (
-                          <div className="w-20 shrink-0 text-right px-2 py-2.5 text-slate-300">{g.float || '--'}</div>
+                          <div className="w-24 shrink-0 text-right px-3 py-3 text-slate-400 tabular-nums">{g.float || '--'}</div>
                         )}
                         {isColVisible('shortPct') && (
-                          <div className="w-20 shrink-0 text-right px-2 py-2.5 text-slate-300">{g.shortPct || '--'}</div>
+                          <div className="w-24 shrink-0 text-right px-3 py-3 text-rose-400/80 font-medium tabular-nums">{g.shortPct || '--'}</div>
                         )}
                         {isColVisible('theme') && (
-                          <div className="w-28 shrink-0 px-2 py-2.5 text-slate-400 truncate">{g.theme || '--'}</div>
-                        )}
-                        {isColVisible('industry') && (
-                          <div className="w-28 shrink-0 px-2 py-2.5 text-muted-foreground truncate">{g.industry || '--'}</div>
-                        )}
-                        {isColVisible('category') && (
-                          <div className="w-20 shrink-0 text-center px-2 py-2.5 text-muted-foreground">{g.category || '--'}</div>
+                          <div className="w-32 shrink-0 px-3 py-3 text-slate-400 truncate font-sans font-medium">{g.theme || '--'}</div>
                         )}
                         {isColVisible('grade') && (
-                          <div className="w-16 shrink-0 flex justify-center items-center py-2">
-                            <Badge variant="outline" className={cn('px-1.5 py-0 h-4 text-[9px] font-bold',
-                              g.grade === 'A' ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' :
-                              g.grade === 'B' ? 'border-blue-500/40 text-blue-400 bg-blue-500/10' :
-                              g.grade === 'C' ? 'border-amber-500/40 text-amber-400 bg-amber-500/10' :
-                              'border-red-500/30 text-red-400 bg-red-500/5')}>
+                          <div className="w-20 shrink-0 flex justify-center items-center py-2">
+                            <Badge variant="outline" className={cn('px-2 py-0 h-4 text-[9px] font-black border-none shadow-sm',
+                              g.grade === 'A' ? 'text-emerald-400 bg-emerald-500/10' :
+                              g.grade === 'B' ? 'text-blue-400 bg-blue-500/10' :
+                              g.grade === 'C' ? 'text-amber-400 bg-amber-500/10' :
+                              'text-rose-400 bg-rose-500/10')}>
                               {g.grade}
                             </Badge>
                           </div>
                         )}
-                        {isColVisible('revGrowth') && (
-                          <div className={cn('w-24 shrink-0 text-right px-2 py-2.5',
-                            g.revGrowth === '--' ? 'text-slate-500' :
-                            g.revGrowth?.startsWith('+') ? 'text-emerald-400' : 'text-rose-400')}>
-                            {g.revGrowth || '--'}
-                          </div>
-                        )}
-                        {isColVisible('epsGrowth') && (
-                          <div className={cn('w-24 shrink-0 text-right px-2 py-2.5',
-                            g.epsGrowth === '--' ? 'text-slate-500' :
-                            g.epsGrowth?.startsWith('+') ? 'text-emerald-400' : 'text-rose-400')}>
-                            {g.epsGrowth || '--'}
-                          </div>
-                        )}
                         {isColVisible('catalyst') && (
-                          <div className="flex-1 min-w-[400px] px-4 py-2.5 text-slate-300 leading-relaxed text-left group relative"
+                          <div className="flex-1 min-w-[450px] px-6 py-3 text-slate-300 font-sans leading-relaxed text-left group relative"
                             title={g.catalyst}>
-                            <span className="line-clamp-2">{g.catalyst || '--'}</span>
+                            <span className="line-clamp-1 group-hover/row:line-clamp-none transition-all">{g.catalyst || '--'}</span>
                           </div>
                         )}
-                      </div>
+                      </motion.div>
                     );
                   })
                 )}
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* ── Unified Intelligence Feed ── */}
-        <div className="flex min-h-[200px] h-[54%] flex-col rounded-lg border border-border/60 bg-card/20">
-          <div className="flex items-center justify-between border-b border-border/60 bg-muted/15 px-3 py-1.5">
-            <div className="flex items-center gap-2">
-              <Newspaper className="h-3.5 w-3.5 text-primary" />
-              <span className="font-bold text-xs uppercase tracking-widest text-foreground">
-                Unified Intelligence Feed
-              </span>
-              <span className="text-[10px] text-muted-foreground">({filteredNews.length})</span>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className="flex min-h-[300px] h-[52%] flex-col rounded-2xl glass-panel overflow-hidden shadow-2xl shadow-black/40"
+        >
+          <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 rounded-lg bg-primary/10 border border-primary/20">
+                <Newspaper className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <span className="font-unbounded text-[10px] font-black uppercase tracking-widest text-foreground">
+                  Unified Intelligence Feed
+                </span>
+                <p className="text-[9px] text-muted-foreground/60 uppercase font-medium mt-0.5">
+                  {filteredNews.length} high-confidence signals
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <div className="flex items-center gap-1 border border-border/40 rounded px-2 py-0.5 bg-background/50">
-                <Filter className="h-3 w-3 hidden sm:block text-muted-foreground" />
-                <select className="bg-transparent outline-none text-muted-foreground max-w-[80px] sm:max-w-none"
+            <div className="flex items-center gap-2 text-[10px]">
+              <div className="flex items-center gap-2 border border-white/5 rounded-lg px-3 py-1.5 bg-white/[0.03]">
+                <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                <select className="bg-transparent outline-none text-muted-foreground font-bold appearance-none cursor-pointer"
                   value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
-                  <option value="all">All Sources</option>
+                  <option value="all">Sources</option>
                   {sources.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              <div className="flex items-center gap-1 border border-border/40 rounded px-2 py-0.5 bg-background/50">
-                <Clock className="h-3 w-3 hidden sm:block text-muted-foreground" />
-                <select className="bg-transparent outline-none text-muted-foreground"
+              <div className="flex items-center gap-2 border border-white/5 rounded-lg px-3 py-1.5 bg-white/[0.03]">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                <select className="bg-transparent outline-none text-muted-foreground font-bold appearance-none cursor-pointer"
                   value={sortBy} onChange={e => setSortBy(e.target.value as 'newest' | 'oldest')}>
-                  <option value="newest">Newest</option>
-                  <option value="oldest">Oldest</option>
+                  <option value="newest">Recent</option>
+                  <option value="oldest">Historical</option>
                 </select>
               </div>
             </div>
           </div>
 
-          <ScrollArea className="flex-1">
-            <div className="flex flex-col divide-y divide-border/20">
+          <ScrollArea className="flex-1 scrollbar-thin">
+            <div className="flex flex-col">
               {loading ? (
-                Array(5).fill(0).map((_, i) => (
-                  <div key={i} className="p-3">
-                    <Skeleton className="h-4 w-3/4 mb-2 bg-muted/30" />
-                    <Skeleton className="h-3 w-1/2 bg-muted/30" />
+                Array(6).fill(0).map((_, i) => (
+                  <div key={i} className="p-5 border-b border-white/[0.02]">
+                    <Skeleton className="h-5 w-3/4 mb-3 bg-white/[0.03] rounded-full" />
+                    <Skeleton className="h-4 w-1/2 bg-white/[0.03] rounded-full" />
                   </div>
                 ))
               ) : filteredNews.length === 0 ? (
-                <div className="p-6 text-center text-muted-foreground text-xs">No news matching criteria.</div>
+                <div className="p-12 text-center text-muted-foreground/60 text-xs font-medium italic">
+                  No signals detected for the current criteria.
+                </div>
               ) : (
-                filteredNews.map((item) => {
+                filteredNews.map((item, idx) => {
                   const sentiment = getSentiment(item.headline, item.summary);
                   return (
-                    <a
+                    <motion.a
                       key={item.id}
                       href={item.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex gap-3 p-2 sm:p-3 hover:bg-muted/10 transition-colors group"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 + idx * 0.05 }}
+                      className="flex gap-4 p-5 hover:bg-white/[0.02] transition-all border-b border-white/[0.02] group"
                     >
-                      {/* Thumbnail */}
-                      <div className="hidden sm:block shrink-0 w-24 h-16 rounded overflow-hidden bg-muted/20 border border-white/5">
+                      {/* Thumbnail with overlay */}
+                      <div className="hidden sm:block shrink-0 w-32 h-20 rounded-xl overflow-hidden bg-white/[0.02] border border-white/5 relative">
                         <img
                           src={item.imageUrl || '/images/news-placeholder.png'}
                           alt=""
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                          className="w-full h-full object-cover grayscale-[0.3] group-hover:grayscale-0 transition-all duration-500 group-hover:scale-110"
                           onError={e => {
                             const t = e.target as HTMLImageElement;
                             if (t.src !== '/images/news-placeholder.png') t.src = '/images/news-placeholder.png';
                           }}
                         />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
 
-                      <div className="flex flex-col gap-1 flex-1 min-w-0">
-                        {/* Meta row: source + time + badges all inline */}
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                            <Globe className="h-3 w-3 hidden sm:block shrink-0" />
-                            {item.source || 'News'} · {formatNewsTime(item.createdAt)}
+                      <div className="flex flex-col gap-2 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-bold text-primary/80 flex items-center gap-1.5">
+                            <Globe className="h-3 w-3" />
+                            {item.source || 'INTEL'}
                           </span>
-                          <Badge variant="outline" className={cn('text-[9px] h-4 px-1.5 rounded-sm font-semibold', sentimentColor(sentiment))}>
-                            {sentiment === 'bullish' ? '▲ Bullish' : sentiment === 'bearish' ? '▼ Bearish' : '— Neutral'}
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {formatNewsTime(item.createdAt)}
+                          </span>
+                          <Badge variant="outline" className={cn('text-[9px] h-4 px-1.5 rounded font-black border-none shadow-sm', sentimentColor(sentiment))}>
+                            {sentiment === 'bullish' ? '▲ BULL' : sentiment === 'bearish' ? '▼ BEAR' : '— NEUT'}
                           </Badge>
                           {item.symbols && item.symbols.length > 0 && item.symbols.slice(0, 3).map(sym => (
-                            <Badge key={sym} variant="outline" className="text-[9px] h-4 px-1 rounded-sm border-muted-foreground/30 text-muted-foreground">
+                            <Badge key={sym} variant="outline" className="text-[9px] h-4 px-1.5 rounded bg-white/5 border-white/5 text-slate-300 font-bold">
                               {sym}
                             </Badge>
                           ))}
-                          <Badge variant="outline" className={cn('text-[9px] h-4 px-1 rounded-sm', item.categoryClass)}>
-                            {item.category}
-                          </Badge>
                         </div>
-                        <div className="font-semibold text-slate-200 group-hover:text-primary transition-colors text-xs sm:text-sm leading-snug">
+                        <div className="font-bold text-slate-100 group-hover:text-primary transition-colors text-sm sm:text-base leading-tight tracking-tight">
                           {decodeHtml(item.headline)}
                         </div>
                         {item.summary && (
-                          <div className="text-[10px] sm:text-xs text-slate-300/80 line-clamp-2 mt-0.5 leading-relaxed">
+                          <div className="text-xs text-muted-foreground/80 line-clamp-2 leading-relaxed font-medium">
                             {decodeHtml(item.summary)}
                           </div>
                         )}
                       </div>
-                    </a>
+                    </motion.a>
                   );
                 })
               )}
             </div>
           </ScrollArea>
-        </div>
+        </motion.div>
       </div>
 
       {/* AI Summary Modal */}
-      {showSummaryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl rounded-xl border border-primary/20 bg-card p-4 sm:p-6 shadow-2xl shadow-primary/10">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <BrainCircuit className="h-5 w-5 text-primary" />
-                <h2 className="text-base sm:text-lg font-bold">AI Intelligence Brief</h2>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => setShowSummaryModal(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <ScrollArea className="max-h-[60vh]">
-              {isSummarizing ? (
-                <div className="space-y-3 py-4">
-                  {Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-4 bg-muted/40" style={{ width: `${85 - i * 10}%` }} />)}
-                  <div className="flex justify-center py-6">
-                    <Activity className="h-8 w-8 animate-pulse text-primary/50" />
+      <AnimatePresence>
+        {showSummaryModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
+              onClick={() => setShowSummaryModal(false)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900/80 backdrop-blur-2xl p-6 sm:p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.6)]"
+            >
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
+                    <BrainCircuit className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-unbounded font-black uppercase tracking-tighter">Intelligence Brief</h2>
+                    <p className="text-[10px] text-muted-foreground/60 uppercase font-bold tracking-widest">Powered by Antigravity OS</p>
                   </div>
                 </div>
-              ) : (
-                <div className="prose prose-invert prose-sm max-w-none space-y-3 text-muted-foreground font-sans">
-                  {aiSummary?.split('\n\n').map((p, i) => <p key={i} className="leading-relaxed">{p}</p>)}
+                <Button variant="ghost" size="icon" onClick={() => setShowSummaryModal(false)} className="rounded-full hover:bg-white/5">
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              
+              <ScrollArea className="max-h-[60vh] pr-4">
+                {isSummarizing ? (
+                  <div className="space-y-4 py-4">
+                    {Array(4).fill(0).map((_, i) => (
+                      <Skeleton key={i} className="h-5 bg-white/[0.03] rounded-full" style={{ width: `${85 - i * 10}%` }} />
+                    ))}
+                    <div className="flex flex-col items-center justify-center py-12 gap-4">
+                      <div className="relative">
+                        <Activity className="h-10 w-10 animate-pulse text-primary/50" />
+                        <div className="absolute inset-0 animate-ping rounded-full bg-primary/20 scale-150" />
+                      </div>
+                      <span className="text-[10px] font-black text-primary/40 uppercase tracking-[0.3em]">Processing Signals…</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="prose prose-invert prose-sm max-w-none space-y-4 text-slate-300 font-sans leading-relaxed">
+                    {aiSummary?.split('\n\n').map((p, i) => (
+                      <motion.p 
+                        key={i} 
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.1 }}
+                        className="text-sm sm:text-base text-slate-200/90 font-medium"
+                      >
+                        {p}
+                      </motion.p>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+              
+              {!isSummarizing && (
+                <div className="mt-8 pt-6 border-t border-white/5 flex justify-end">
+                  <Button onClick={() => setShowSummaryModal(false)} className="rounded-xl bg-white text-slate-950 font-black text-[11px] uppercase tracking-widest hover:bg-slate-200 transition-all px-6 h-10">
+                    Dismiss Brief
+                  </Button>
                 </div>
               )}
-            </ScrollArea>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Stock Detail Side Panel */}
-      {selectedStock && (
-        <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[520px] bg-slate-950 border-l border-primary/30 shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col font-sans">
-          {/* Panel header */}
-          <div className="flex items-center justify-between p-4 border-b border-border bg-card/50">
-            <div className="flex items-center gap-3">
-              {selectedStock.logo && (
-                <img src={selectedStock.logo} alt="" className="h-9 w-9 rounded bg-white p-0.5 shrink-0" />
-              )}
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-black text-primary">{selectedStock.symbol}</h2>
-                  <button onClick={() => toggleWatchlist(selectedStock.symbol)}>
-                    <Star className={cn('h-4 w-4', watchlist.has(selectedStock.symbol) ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground hover:text-amber-400')} />
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">{selectedStock.industry} · {selectedStock.category}</p>
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => setSelectedStock(null)}
-              className="hover:bg-rose-500/10 hover:text-rose-500">
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
-
-          <ScrollArea className="flex-1">
-            <div className="p-5 space-y-6">
-
-              {/* TradingView Chart */}
-              <section className="rounded-lg overflow-hidden border border-border/40">
-                <TradingViewWidget symbol={selectedStock.symbol} />
-              </section>
-
-              {/* Price performance */}
-              <section className="bg-gradient-to-br from-card to-slate-900 p-4 rounded-xl border border-border/50 shadow-inner">
-                <div className="flex justify-between items-end">
+      <AnimatePresence>
+        {selectedStock && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] bg-slate-950/40 backdrop-blur-sm sm:hidden"
+              onClick={() => setSelectedStock(null)}
+            />
+            <motion.div 
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 z-[120] w-full sm:w-[580px] bg-slate-950/95 backdrop-blur-3xl border-l border-white/10 shadow-[-32px_0_64px_-12px_rgba(0,0,0,0.5)] flex flex-col"
+            >
+              {/* Panel header */}
+              <div className="flex items-center justify-between px-6 py-5 border-b border-white/5 bg-white/[0.02]">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-white p-1.5 shrink-0 shadow-xl overflow-hidden">
+                    {selectedStock.logo ? (
+                      <img src={selectedStock.logo} alt="" className="w-full h-full object-contain" />
+                    ) : (
+                      <div className="w-full h-full bg-slate-100 flex items-center justify-center font-black text-slate-950 text-sm">
+                        {selectedStock.symbol[0]}
+                      </div>
+                    )}
+                  </div>
                   <div>
-                    <p className="text-[10px] uppercase text-muted-foreground mb-1">Current Price</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-black text-slate-100">${selectedStock.price.toFixed(2)}</span>
-                      <span className={cn('text-sm font-bold', parseFloat(selectedStock.changePct) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
-                        {parseFloat(selectedStock.changePct) >= 0 ? '▲' : '▼'} {selectedStock.changePct}%
-                      </span>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-2xl font-unbounded font-black tracking-tighter text-white">{selectedStock.symbol}</h2>
+                      <button onClick={() => toggleWatchlist(selectedStock.symbol)} className="transition-transform active:scale-75">
+                        <Star className={cn('h-5 w-5', watchlist.has(selectedStock.symbol) ? 'fill-amber-400 text-amber-400' : 'text-white/10 hover:text-amber-400')} />
+                      </button>
                     </div>
+                    <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">
+                      {selectedStock.industry} · <span className="text-primary/60">{selectedStock.category}</span>
+                    </p>
                   </div>
-                  <div className="text-right space-y-1">
-                    <div className="text-[10px] text-muted-foreground">Pre-Market</div>
-                    <div className={cn('text-sm font-bold',
-                      selectedStock.premktChgPct === '--' || !selectedStock.premktChgPct ? 'text-slate-500' :
-                      selectedStock.premktChgPct.startsWith('+') ? 'text-emerald-400' : 'text-rose-400')}>
-                      {selectedStock.premktChgPct || '--'}
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setSelectedStock(null)}
+                  className="rounded-full hover:bg-rose-500/10 hover:text-rose-500 transition-colors">
+                  <X className="h-6 w-6" />
+                </Button>
+              </div>
+
+              <ScrollArea className="flex-1 px-6">
+                <div className="py-8 space-y-8">
+
+                  {/* TradingView Chart Container */}
+                  <section className="rounded-3xl overflow-hidden border border-white/10 bg-slate-900 shadow-2xl">
+                    <TradingViewWidget symbol={selectedStock.symbol} />
+                  </section>
+
+                  {/* Price Performance Grid */}
+                  <section className="grid grid-cols-2 gap-4">
+                    <div className="glass-panel p-5 rounded-2xl border border-white/5 bg-white/[0.02]">
+                      <p className="text-[9px] uppercase text-muted-foreground font-black tracking-[0.2em] mb-3">Live Valuation</p>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-mono font-black text-white tabular-nums">${selectedStock.price.toFixed(2)}</span>
+                        <span className={cn('text-xs font-bold font-mono', parseFloat(selectedStock.changePct) >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
+                          {parseFloat(selectedStock.changePct) >= 0 ? '▲' : '▼'} {selectedStock.changePct}%
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-muted-foreground mb-1">Grade</p>
-                    <Badge className={cn('text-lg font-black px-3',
-                      selectedStock.grade === 'A' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' :
-                      selectedStock.grade === 'B' ? 'bg-blue-500/20 text-blue-400 border-blue-500/50' :
-                      'bg-amber-500/20 text-amber-400 border-amber-500/50')}>
-                      {selectedStock.grade}
-                    </Badge>
-                  </div>
-                </div>
-              </section>
-
-              {/* Catalyst */}
-              <section>
-                <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-widest mb-2">
-                  <BrainCircuit className="h-3.5 w-3.5" /> Primary Catalyst
-                </div>
-                <div className="bg-primary/5 border border-primary/15 rounded-lg p-3 text-slate-200 text-xs leading-relaxed">
-                  {selectedStock.catalyst || 'No specific catalyst detected.'}
-                </div>
-              </section>
-
-              {/* Market Intelligence grid */}
-              <section>
-                <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Market Intelligence</h3>
-                <div className="grid grid-cols-2 gap-px bg-border/30 border border-border/30 rounded-xl overflow-hidden">
-                  {[
-                    { label: 'Market Cap', value: selectedStock.mktCap },
-                    { label: 'Float', value: selectedStock.float },
-                    { label: 'Short Interest', value: selectedStock.shortPct },
-                    { label: 'Volume (1D)', value: formatVolume(selectedStock.volume) },
-                    { label: 'Pre-Mkt Vol', value: selectedStock.premktVol ? formatVolume(selectedStock.premktVol) : '--' },
-                    { label: 'Prev Close', value: `$${selectedStock.prevClose.toFixed(2)}` },
-                    { label: 'Rev Growth', value: selectedStock.revGrowth, color: selectedStock.revGrowth?.startsWith('+') ? 'text-emerald-400' : 'text-rose-400' },
-                    { label: 'EPS Growth', value: selectedStock.epsGrowth, color: selectedStock.epsGrowth?.startsWith('+') ? 'text-emerald-400' : 'text-rose-400' },
-                  ].map((item, i) => (
-                    <div key={i} className="bg-slate-900/60 p-3">
-                      <p className="text-[9px] uppercase text-muted-foreground mb-1">{item.label}</p>
-                      <p className={cn('text-sm font-bold', item.color || 'text-slate-200')}>{item.value || '--'}</p>
+                    <div className="glass-panel p-5 rounded-2xl border border-white/5 bg-white/[0.02]">
+                      <p className="text-[9px] uppercase text-muted-foreground font-black tracking-[0.2em] mb-3">Pre-Market Chg</p>
+                      <div className={cn('text-3xl font-mono font-black tabular-nums',
+                        selectedStock.premktChgPct === '--' || !selectedStock.premktChgPct ? 'text-slate-600' :
+                        selectedStock.premktChgPct.startsWith('+') ? 'text-emerald-400' : 'text-rose-400')}>
+                        {selectedStock.premktChgPct || '--'}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </section>
+                  </section>
 
-              {/* Sparkline — large panel version */}
-              {selectedStock.sparkline && selectedStock.sparkline.length >= 2 && (
-                <section>
-                  <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                    <TrendingUp className="inline h-3 w-3 mr-1" /> 10-Day Price Trend
-                  </h3>
-                  <div className="bg-card/50 border border-border/30 rounded-lg p-3">
-                    <SparklineLarge data={selectedStock.sparkline} isUp={parseFloat(selectedStock.changePct) >= 0} />
-                  </div>
-                </section>
-              )}
+                  {/* Catalyst Section */}
+                  <section className="glass-panel p-6 rounded-3xl border border-white/5 bg-primary/5 shadow-[inset_0_0_24px_rgba(112,255,155,0.03)]">
+                    <div className="flex items-center gap-2 text-primary font-black text-[10px] uppercase tracking-[0.3em] mb-4">
+                      <BrainCircuit className="h-4 w-4" /> Intelligence Brief
+                    </div>
+                    <div className="text-slate-200 text-sm leading-relaxed font-medium">
+                      {selectedStock.catalyst || 'No specific high-impact catalyst detected for this symbol.'}
+                    </div>
+                  </section>
 
-              {/* Live Mentions */}
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Live Mentions</h3>
-                  <Badge variant="outline" className="text-[9px] border-primary/20 text-primary">REAL-TIME</Badge>
-                </div>
-                <div className="space-y-2">
-                  {filteredNews.filter(n => n.symbols.includes(selectedStock.symbol)).slice(0, 5).map((item, i) => {
-                    const sentiment = getSentiment(item.headline, item.summary);
-                    return (
-                      <a key={i} href={item.url} target="_blank" rel="noreferrer"
-                        className="block p-3 rounded-lg border border-border/40 hover:border-primary/40 bg-muted/5 transition-all group">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-[9px] text-muted-foreground">{item.source} · {formatNewsTime(item.createdAt)}</span>
-                          <Badge variant="outline" className={cn('text-[8px] h-3.5 px-1', sentimentColor(sentiment))}>
-                            {sentiment}
-                          </Badge>
+                  {/* Market Intelligence Grid */}
+                  <section>
+                    <h3 className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                      <Activity className="h-3.5 w-3.5" /> Market Metrics
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: 'Market Cap', value: selectedStock.mktCap },
+                        { label: 'Float Size', value: selectedStock.float },
+                        { label: 'Short Int %', value: selectedStock.shortPct, color: 'text-rose-400' },
+                        { label: 'Avg Vol (1D)', value: formatVolume(selectedStock.volume) },
+                        { label: 'Pre-Mkt Vol', value: selectedStock.premktVol ? formatVolume(selectedStock.premktVol) : '--' },
+                        { label: 'Prev Close', value: `$${selectedStock.prevClose.toFixed(2)}` },
+                        { label: 'Revenue Gr', value: selectedStock.revGrowth, color: selectedStock.revGrowth?.startsWith('+') ? 'text-emerald-400' : 'text-rose-400' },
+                        { label: 'EPS Growth', value: selectedStock.epsGrowth, color: selectedStock.epsGrowth?.startsWith('+') ? 'text-emerald-400' : 'text-rose-400' },
+                      ].map((item, i) => (
+                        <div key={i} className="bg-white/[0.03] border border-white/5 p-4 rounded-xl group hover:bg-white/[0.06] transition-colors">
+                          <p className="text-[9px] uppercase text-muted-foreground font-bold tracking-widest mb-1 group-hover:text-primary/60 transition-colors">{item.label}</p>
+                          <p className={cn('text-base font-mono font-black tabular-nums', item.color || 'text-slate-100')}>{item.value || '--'}</p>
                         </div>
-                        <p className="text-xs font-medium text-slate-300 group-hover:text-primary transition-colors line-clamp-2">{item.headline}</p>
-                      </a>
-                    );
-                  })}
-                  {filteredNews.filter(n => n.symbols.includes(selectedStock.symbol)).length === 0 && (
-                    <div className="text-center py-6 border border-dashed border-border/40 rounded-lg">
-                      <p className="text-xs text-muted-foreground">No mentions for {selectedStock.symbol}</p>
+                      ))}
                     </div>
-                  )}
-                </div>
-              </section>
-            </div>
-          </ScrollArea>
+                  </section>
 
-          <div className="p-4 border-t border-border bg-card/30 flex gap-2">
-            <Button className="flex-1 bg-primary text-primary-foreground font-bold text-xs"
-              onClick={() => window.open(`https://seekingalpha.com/symbol/${selectedStock.symbol}`, '_blank')}>
-              SeekingAlpha
-            </Button>
-            <Button variant="outline" className="flex-1 border-primary/20 hover:bg-primary/10 text-xs"
-              onClick={() => window.open(`https://finance.yahoo.com/quote/${selectedStock.symbol}`, '_blank')}>
-              Yahoo Finance
-            </Button>
-          </div>
-        </div>
-      )}
+                  {/* Trend Visualization */}
+                  {selectedStock.sparkline && selectedStock.sparkline.length >= 2 && (
+                    <section>
+                      <h3 className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-4">
+                        <TrendingUp className="inline h-3.5 w-3.5 mr-2" /> 10-Day Delta
+                      </h3>
+                      <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 shadow-inner">
+                        <SparklineLarge data={selectedStock.sparkline} isUp={parseFloat(selectedStock.changePct) >= 0} />
+                      </div>
+                    </section>
+                  )}
+
+                  {/* Live Feed Context */}
+                  <section className="pb-10">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">Contextual Signals</h3>
+                      <Badge variant="outline" className="text-[9px] font-black bg-primary/10 border-none text-primary uppercase tracking-widest px-2">Live Sync</Badge>
+                    </div>
+                    <div className="space-y-3">
+                      {filteredNews.filter(n => n.symbols.includes(selectedStock.symbol)).slice(0, 5).map((item, i) => {
+                        const sentiment = getSentiment(item.headline, item.summary);
+                        return (
+                          <motion.a 
+                            key={i} 
+                            href={item.url} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            className="block p-4 rounded-2xl border border-white/5 hover:border-primary/40 bg-white/[0.01] hover:bg-white/[0.03] transition-all group"
+                          >
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-[9px] font-bold text-muted-foreground uppercase">{item.source} · {formatNewsTime(item.createdAt)}</span>
+                              <Badge variant="outline" className={cn('text-[8px] font-black h-4 px-1.5 border-none', sentimentColor(sentiment))}>
+                                {sentiment.toUpperCase()}
+                              </Badge>
+                            </div>
+                            <p className="text-xs font-bold text-slate-200 group-hover:text-primary transition-colors line-clamp-2 leading-snug">{item.headline}</p>
+                          </motion.a>
+                        );
+                      })}
+                      {filteredNews.filter(n => n.symbols.includes(selectedStock.symbol)).length === 0 && (
+                        <div className="text-center py-12 border border-dashed border-white/10 rounded-3xl">
+                          <p className="text-xs font-medium text-muted-foreground/60 italic">No historical signals for {selectedStock.symbol}</p>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              </ScrollArea>
+
+              <div className="p-6 border-t border-white/5 bg-slate-900/50 backdrop-blur-xl flex gap-3">
+                <Button className="flex-1 bg-primary text-slate-950 font-black text-[11px] uppercase tracking-widest rounded-xl h-12 shadow-lg shadow-primary/10 hover:opacity-90"
+                  onClick={() => window.open(`https://seekingalpha.com/symbol/${selectedStock.symbol}`, '_blank')}>
+                  SeekingAlpha
+                </Button>
+                <Button variant="outline" className="flex-1 border-white/10 bg-white/[0.03] hover:bg-white/[0.08] text-white font-black text-[11px] uppercase tracking-widest rounded-xl h-12"
+                  onClick={() => window.open(`https://finance.yahoo.com/quote/${selectedStock.symbol}`, '_blank')}>
+                  Yahoo Finance
+                </Button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
