@@ -142,9 +142,13 @@ function TradingViewWidget({ symbol }: { symbol: string }) {
 
 function decodeHtml(html: string) {
   if (!html) return '';
-  const txt = document.createElement('textarea');
-  txt.innerHTML = html;
-  return txt.value;
+  // Use a faster regex-based approach for common entities instead of document.createElement for SSR safety
+  return html
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 }
 
 export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
@@ -799,21 +803,22 @@ export function TerminalDashboard({ categorySlug }: TerminalDashboardProps) {
 
                       <div className="flex flex-col gap-2 flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-bold text-primary/80 flex items-center gap-1.5">
+                          <Badge variant="outline" className={cn('text-[9px] h-4 px-2 rounded-full font-black border-none shadow-sm uppercase tracking-tighter', 
+                            item.categoryClass === 'cat-earnings' ? 'bg-amber-500/15 text-amber-400' :
+                            item.categoryClass === 'cat-fda' ? 'bg-rose-500/15 text-rose-400' :
+                            item.categoryClass === 'cat-technology' ? 'bg-blue-500/15 text-blue-400' :
+                            item.categoryClass === 'cat-crypto' ? 'bg-orange-500/15 text-orange-400' :
+                            'bg-emerald-500/15 text-emerald-400'
+                          )}>
+                            {item.category || 'INTEL'}
+                          </Badge>
+                          <span className="text-[10px] font-bold text-muted-foreground/60 flex items-center gap-1.5 ml-1">
                             <Globe className="h-3 w-3" />
-                            {item.source || 'INTEL'}
+                            {item.source}
                           </span>
-                          <span className="text-[10px] text-muted-foreground font-mono">
+                          <span className="text-[10px] text-muted-foreground/40 font-mono ml-auto">
                             {formatNewsTime(item.createdAt)}
                           </span>
-                          <Badge variant="outline" className={cn('text-[9px] h-4 px-1.5 rounded font-black border-none shadow-sm', sentimentColor(sentiment))}>
-                            {sentiment === 'bullish' ? '▲ BULL' : sentiment === 'bearish' ? '▼ BEAR' : '— NEUT'}
-                          </Badge>
-                          {item.symbols && item.symbols.length > 0 && item.symbols.slice(0, 3).map(sym => (
-                            <Badge key={sym} variant="outline" className="text-[9px] h-4 px-1.5 rounded bg-white/5 border-white/5 text-slate-300 font-bold">
-                              {sym}
-                            </Badge>
-                          ))}
                         </div>
                         <div className="font-bold text-slate-100 group-hover:text-primary transition-colors text-sm sm:text-base leading-tight tracking-tight">
                           {decodeHtml(item.headline) || 'Breaking Intelligence Signal'}
