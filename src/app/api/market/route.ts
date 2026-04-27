@@ -260,7 +260,13 @@ export async function GET() {
         ? (mktCapVal > 200000 ? 'Mega' : mktCapVal > 10000 ? 'Large' : mktCapVal > 2000 ? 'Mid' : mktCapVal > 300 ? 'Small' : 'Micro')
         : (isEtf ? 'ETF' : '--');
 
-      const shares = yf.sharesOutstanding || prof?.shareOutstanding || 0;
+      const pmChgPct = pm.premktChgPct !== '--' ? pm.premktChgPct :
+        (yf.preMarketChangePercent != null ? (yf.preMarketChangePercent >= 0 ? '+' : '') + yf.preMarketChangePercent.toFixed(2) + '%' :
+        (yf.postMarketChangePercent != null ? (yf.postMarketChangePercent >= 0 ? '+' : '') + yf.postMarketChangePercent.toFixed(2) + '%' : '--'));
+      
+      const pmVol = pm.premktVol > 0 ? pm.premktVol : (yf.preMarketVolume || yf.postMarketVolume || 0);
+
+      const shares = yf.sharesOutstanding ? (yf.sharesOutstanding / 1000000) : (prof?.shareOutstanding || 0);
       const float = shares > 0
         ? (shares >= 1000 ? (shares / 1000).toFixed(1) + 'B' : shares.toFixed(1) + 'M')
         : '--';
@@ -286,8 +292,8 @@ export async function GET() {
         price,
         prevClose,
         changePct: changePct.toFixed(2),
-        premktChgPct: pm.premktChgPct,
-        premktVol: pm.premktVol,
+        premktChgPct: pmChgPct,
+        premktVol: pmVol,
         sparkline: sparklines[sym] || [],
         grade,
         mktCap: mktCapDisplay,
