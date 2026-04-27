@@ -6,6 +6,7 @@ import axios from 'axios';
 import { fetchDynamicEtfs, classifyTheme, formatGrowth } from '@/lib/market';
 import { fetchAlpacaAssets } from '@/lib/alpaca-assets';
 import { getProfiles, getMetrics, getCatalysts, fetchPreMarketBars } from '@/lib/finnhub-cache';
+import { getAlphaVantageOverviews } from '@/lib/alphavantage';
 import yahooFinance2 from 'yahoo-finance2';
 // @ts-ignore
 const yahooFinance = typeof yahooFinance2 === 'function' ? new yahooFinance2() : (yahooFinance2.default ? new yahooFinance2.default() : yahooFinance2);
@@ -181,6 +182,10 @@ export async function GET() {
     // 3b. Fetch Finnhub profile2 (industry/logo/mktCap/float) — 24h cached
     const profiles = await getProfiles(finnhubEligible);
 
+    // 3c. Fetch Alpha Vantage COMPANY_OVERVIEW for symbols without a Finnhub Profile (like Warrants)
+    const noProfileSymbols = symbols.filter(s => !profiles[s] && !etfSymbols.has(s));
+    const avOverviews = await getAlphaVantageOverviews(noProfileSymbols);
+
     // 4. Fetch Finnhub metrics (revGrowth, epsGrowth, mktCap fallback) — 24h cached.
     const finnhubMetrics = await getMetrics(finnhubEligible);
 
@@ -216,10 +221,11 @@ export async function GET() {
       const snap = snapshots[sym];
       const prof = profiles[sym] || null;
       const fMetrics = finnhubMetrics[sym] || null;
+      const avOverview = avOverviews[sym] || null;
       const pm = preMarketData[sym] || { premktChgPct: '--', premktVol: 0 };
       const yf = yfMap[sym] || {};
       const yfFund = yfFundamentals[sym] || {};
-      const isEtf = etfSymbols.has(sym) || prof?.finnhubIndustry?.toLowerCase().includes('etf') || yf.quoteType === 'ETF';
+      const isEtf = etfSymbols.has(sym) || prof?.finnhubIndustry?.toLowerCase().includes('etf') || yf.quoteType === 'ETF' || avOverview?.AssetType?.toLowerCase().includes('etf');
       const vol = volumeMap.get(sym) || { volume: 0, trade_count: 0 };
 
       let price = 0, prevClose = 0, changePct = 0;
@@ -250,6 +256,8 @@ export async function GET() {
         mktCapVal = prof.marketCapitalization;
       } else if (fMetrics?.marketCapitalization && fMetrics.marketCapitalization > 0) {
         mktCapVal = fMetrics.marketCapitalization;
+      } else if (avOverview?.MarketCapitalization && avOverview.MarketCapitalization !== 'None') {
+        mktCapVal = parseInt(avOverview.MarketCapitalization, 10) / 1000000;
       }
       
       const mktCapDisplay = mktCapVal > 0
@@ -272,13 +280,14 @@ export async function GET() {
         : '--';
 
       const asset = alpacaAssets[sym];
-      const industry = prof?.finnhubIndustry || (isEtf ? 'ETF' : asset?.industryGuess || '--');
+      const avIndustry = avOverview?.Sector || avOverview?.Industry;
+      const industry = prof?.finnhubIndustry || avIndustry || (isEtf ? 'ETF' : asset?.industryGuess || '--');
       const theme = prof?.finnhubIndustry
         ? classifyTheme(prof.finnhubIndustry, prof.name || sym)
-        : (isEtf ? 'ETF' : asset?.themeGuess || '--');
+        : (avIndustry ? classifyTheme(avIndustry, avOverview?.Name || sym) : (isEtf ? 'ETF' : asset?.themeGuess || '--'));
       const category = isEtf
         ? 'ETF'
-        : (prof?.finnhubIndustry ? 'Stock' : (asset?.category || '--'));
+        : (prof?.finnhubIndustry || avIndustry ? 'Stock' : (asset?.category || '--'));
 
       const catalyst = catalysts[sym] || yfFund.catalyst || (isEtf ? `Leveraged/Inverse ETF tracking ${theme}` : '--');
 
