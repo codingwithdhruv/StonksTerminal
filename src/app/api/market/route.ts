@@ -270,18 +270,25 @@ export async function GET() {
       }
     }
 
-    // 3. Fetch Finnhub profiles (cached 24h, throttled to respect 60/min limit)
-    const nonEtfSymbols = symbols.filter(s => !etfSymbols.has(s));
-    const profiles = await getProfiles(nonEtfSymbols);
-
-    // 4. Fetch SA metrics (SI%, rev growth, EPS growth, logos, marketCap fallback)
-    const { metrics: saMetrics } = await fetchSAMetrics(nonEtfSymbols);
-
-    // 4b. Fetch Alpaca asset master (provides name + classification for warrants/rights/units)
+    // 3a. Fetch Alpaca asset master FIRST (cheap, no rate limit) — gives us classification
     const alpacaAssets = await fetchAlpacaAssets(symbols);
 
-    // 5. Fetch live catalysts (cached 10min)
-    const catalysts = await getCatalysts(nonEtfSymbols);
+    // 3b. Fetch Finnhub profiles ONLY for symbols Finnhub can actually cover.
+    //     Skip ETFs and Alpaca-classified Warrant/Right/Unit/Note/Preferred (Finnhub returns {} for these).
+    //     This drops the call count from ~88 → ~40, well under Finnhub's 60/min limit.
+    const finnhubEligible = symbols.filter(s => {
+      if (etfSymbols.has(s)) return false;
+      const cat = alpacaAssets[s]?.category;
+      if (cat && cat !== 'Stock' && cat !== 'ADR') return false;
+      return true;
+    });
+    const profiles = await getProfiles(finnhubEligible);
+
+    // 4. Fetch SA metrics (SI%, rev growth, EPS growth, logos, marketCap fallback)
+    const { metrics: saMetrics } = await fetchSAMetrics(finnhubEligible);
+
+    // 5. Fetch live catalysts via Alpaca news (1 multi-symbol call vs 88 Finnhub calls)
+    const catalysts = await getCatalysts(symbols);
 
     // 6. Fetch pre-market data from Yahoo Finance for all symbols
     const preMarketData = await fetchPreMarketData(symbols);

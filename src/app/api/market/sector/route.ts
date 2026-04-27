@@ -225,11 +225,18 @@ export async function GET(request: Request) {
     );
     const snapshots: Record<string, AlpacaSnapshot> = snapshotRes.data || {};
 
-    // 3. Fetch Finnhub profiles (cached 24h, throttled to respect 60/min limit)
-    const profiles = await getProfiles(allSymbols);
-
-    // 4. Fetch Alpaca asset master (provides classification for warrants and industry guess as fallback)
+    // 3. Fetch Alpaca asset master FIRST (cheap, no rate limit) — gives us classification
     const alpacaAssets = await fetchAlpacaAssets(allSymbols);
+
+    // 4. Fetch Finnhub profiles ONLY for symbols Finnhub can cover (Stock/ADR).
+    //    Skip Alpaca-classified Warrant/Right/Unit/etc. — Finnhub returns {} for those.
+    //    This drops the call count from ~88 → ~40, well under Finnhub's 60/min limit.
+    const finnhubEligible = allSymbols.filter(s => {
+      const cat = alpacaAssets[s]?.category;
+      if (cat && cat !== 'Stock' && cat !== 'ADR') return false;
+      return true;
+    });
+    const profiles = await getProfiles(finnhubEligible);
 
     // 5. Filter symbols to those matching the sector
     //    Use Finnhub industry primary, Alpaca asset name guess as fallback

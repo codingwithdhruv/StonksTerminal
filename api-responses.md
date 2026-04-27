@@ -286,8 +286,26 @@ Always decode with `decodeHtml()` before displaying.
 |---|---|---|
 | SA screener | Requires login (403) | Alpaca most-actives + Finnhub industry filter |
 | SA metrics | Monthly quota exceeded | Graceful -- fallback, no crash |
-| YF pre-market | Null outside 4-9:30 AM ET weekdays | Show -- on weekends/off-hours |
+| YF pre-market | RapidAPI subscription returns "not subscribed" | Show -- always; consider removing column |
 | Alpaca bars | `limit` is GLOBAL, not per-symbol | Set `limit = numSymbols * 15` |
-| Alpaca bars | IEX feed excludes many symbols | Remove `feed=iex`, use default |
+| Alpaca bars | IEX feed excludes many symbols (NVDA etc.) | Remove `feed=iex`, use default |
+| Finnhub profile2 | 60 req/min HARD limit (returns "API limit reached") | 24h in-memory cache + Alpaca catalyst replacement |
+| Finnhub company-news | 60 req/min — too expensive per-symbol | Use Alpaca multi-symbol news instead (1 call vs 88) |
 | Finnhub mktCap | In MILLIONS USD | Do NOT divide by 1M again |
 | SA marketCap | In DOLLARS | Divide by 1,000,000 for millions |
+| Vercel functions | Cold-start = empty in-memory cache | Aggressive caching helps subsequent warm requests |
+| Finnhub profile2 | Empty for warrants/rights/units (USGOW, ESHAR) | Alpaca `/v2/assets/{symbol}` provides name + classification |
+
+## Sector Filtering Strategy
+
+When matching `finnhubIndustry` to a sector, use **word-boundary regex** (`\b{kw}`) NOT substring match:
+- `'biotechnology'.includes('technology')` → true (BUG: pulls biotech into Technology)
+- `/\btechnology/.test('biotechnology')` → false (CORRECT)
+
+For symbols without Finnhub profile (warrants, rights), use Alpaca asset name's `industryGuess` from regex pattern matching on company name.
+
+## Catalyst Source Strategy
+
+**DO NOT** call Finnhub `/company-news?symbol=X` per-symbol — burns 88 of the 60/min budget instantly.
+
+**DO** use Alpaca `/v1beta1/news?symbols=X,Y,Z,...&limit=50` once. One call returns 50 articles, each with a `symbols[]` array. Map first headline per symbol → catalyst. Single API call for all 88 stocks.
