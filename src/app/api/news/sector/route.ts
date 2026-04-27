@@ -8,27 +8,10 @@ import { categorizeNews, getCategoryLabel, normalizeTimestamp, NewsItem, NEWS_PL
 const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
 const ALPACA_DATA_URL = process.env.ALPACA_DATA_URL || 'https://data.alpaca.markets';
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 
 const alpacaHeaders = {
   'APCA-API-KEY-ID': ALPACA_API_KEY_ID || '',
   'APCA-API-SECRET-KEY': ALPACA_API_SECRET_KEY || '',
-};
-
-
-// SA news categories per sector
-const SA_NEWS_CATEGORIES: Record<string, string> = {
-  technology: 'market-news::technology',
-  healthcare: 'market-news::healthcare',
-  macro: 'market-news::us-economy',
-  financials: 'market-news::financials',
-  communications: 'market-news::communication-services',
-  energy: 'market-news::energy',
-  utilities: 'market-news::technology', // Fallback
-  realestate: 'market-news::reits',
-  crypto: 'market-news::crypto',
-  fda: 'market-news::healthcare',
-  earnings: 'earnings::earnings-news',
 };
 
 /** Map sector slug to Alpaca news search keywords */
@@ -94,61 +77,7 @@ export async function GET(request: Request) {
     console.error('Alpaca sector news error:', (e as Error).message);
   }
 
-  // 2. Fetch SA sector-specific news
-  if (RAPIDAPI_KEY) {
-    const saCategory = SA_NEWS_CATEGORIES[sector.toLowerCase()] || 'market-news::all';
-    try {
-      const res = await axios.get(
-        `https://seeking-alpha.p.rapidapi.com/news/v2/list?category=${saCategory}&size=30`,
-        {
-          headers: {
-            'x-rapidapi-key': RAPIDAPI_KEY,
-            'x-rapidapi-host': 'seeking-alpha.p.rapidapi.com',
-          },
-          timeout: 10000,
-        }
-      );
-      const articles = res.data?.data || [];
-      const included = res.data?.included || [];
 
-      const tickerMap: Record<string, string> = {};
-      for (const inc of included) {
-        if (inc.type === 'ticker' && inc.attributes?.slug) {
-          tickerMap[inc.id] = inc.attributes.slug.toUpperCase();
-        }
-      }
-
-      for (const article of articles) {
-        const headline = article.attributes?.title || '';
-        const publishOn = article.attributes?.publishOn || '';
-        const cc = categorizeNews(headline, '');
-        const imageUrl = article.attributes?.gettyImageUrl || article.links?.uriImage || undefined;
-
-        const syms: string[] = [];
-        for (const t of [...(article.relationships?.primaryTickers?.data || []), ...(article.relationships?.secondaryTickers?.data || [])]) {
-          const sym = tickerMap[t.id];
-          if (sym && !syms.includes(sym)) syms.push(sym);
-        }
-
-        const { iso, unix } = normalizeTimestamp(publishOn || Date.now());
-        allNews.push({
-          id: `sa-sector-${article.id}`,
-          headline,
-          summary: '',
-          url: `https://seekingalpha.com${article.links?.self || ''}`,
-          symbols: syms,
-          createdAt: iso,
-          _timestamp: unix,
-          category: getCategoryLabel(cc),
-          categoryClass: cc,
-          source: 'Seeking Alpha',
-          imageUrl: imageUrl || NEWS_PLACEHOLDER,
-        });
-      }
-    } catch (e) {
-      console.error('SA sector news error:', (e as Error).message);
-    }
-  }
 
   // Deduplicate and Normalize Timings (IST handling)
   const seenUrls = new Set();
