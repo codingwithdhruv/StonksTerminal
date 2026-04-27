@@ -74,9 +74,9 @@ async function getEtfSymbols(): Promise<Set<string>> {
  * We fetch in batches to avoid excessive Yahoo Finance rate limiting.
  */
 async function fetchYFMetrics(symbols: string[]): Promise<{
-  metrics: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string }>;
+  metrics: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string; catalyst?: string }>;
 }> {
-  const metrics: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string }> = {};
+  const metrics: Record<string, { shortPct?: string; revGrowth?: string; epsGrowth?: string; catalyst?: string }> = {};
   if (symbols.length === 0) return { metrics };
 
   const CHUNK_SIZE = 15;
@@ -86,18 +86,24 @@ async function fetchYFMetrics(symbols: string[]): Promise<{
     await Promise.allSettled(
       chunk.map(async (sym) => {
         try {
-          const result = await yahooFinance.quoteSummary(sym, { modules: ['defaultKeyStatistics', 'financialData'] });
-          const shortPctRaw = result.defaultKeyStatistics?.shortPercentOfFloat;
-          const revGrowthRaw = result.financialData?.revenueGrowth;
-          const epsGrowthRaw = result.financialData?.earningsGrowth;
+          const [result, searchRes] = await Promise.all([
+            yahooFinance.quoteSummary(sym, { modules: ['defaultKeyStatistics', 'financialData'] }).catch(() => null),
+            yahooFinance.search(sym, { newsCount: 1 }).catch(() => null)
+          ]);
+          
+          const shortPctRaw = result?.defaultKeyStatistics?.shortPercentOfFloat;
+          const revGrowthRaw = result?.financialData?.revenueGrowth;
+          const epsGrowthRaw = result?.financialData?.earningsGrowth;
+          const catalystTitle = searchRes?.news?.[0]?.title;
 
           metrics[sym] = {
             shortPct: shortPctRaw != null ? (shortPctRaw * 100).toFixed(2) + '%' : undefined,
             revGrowth: revGrowthRaw != null ? (revGrowthRaw >= 0 ? '+' : '') + (revGrowthRaw * 100).toFixed(1) + '%' : undefined,
             epsGrowth: epsGrowthRaw != null ? (epsGrowthRaw >= 0 ? '+' : '') + (epsGrowthRaw * 100).toFixed(1) + '%' : undefined,
+            catalyst: catalystTitle || undefined,
           };
         } catch (e) {
-          // Suppress errors for symbols that Yahoo doesn't track properly (like Warrants/Rights)
+          // Suppress errors
         }
       })
     );
@@ -268,7 +274,7 @@ export async function GET() {
         ? 'ETF'
         : (prof?.finnhubIndustry ? 'Stock' : (asset?.category || '--'));
 
-      const catalyst = catalysts[sym] || (isEtf ? `Leveraged/Inverse ETF tracking ${theme}` : '--');
+      const catalyst = catalysts[sym] || yfFund.catalyst || (isEtf ? `Leveraged/Inverse ETF tracking ${theme}` : '--');
 
       const logo = prof?.logo || undefined;
 

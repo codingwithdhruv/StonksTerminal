@@ -6,17 +6,19 @@ import { GET as getAlpaca } from '@/app/api/news/route';
 import { GET as getFinnhub } from '@/app/api/finnhub/route';
 import { GET as getSeekingAlpha } from '@/app/api/seeking-alpha/route';
 import { GET as getYahooFinance } from '@/app/api/yahoo-finance/route';
+import { GET as getCnbc } from '@/app/api/news/cnbc/route';
 import { normalizeTimestamp, NewsItem } from '@/lib/news';
 
 export async function GET(request: Request) {
   try {
     // We create mock requests if needed, but the original request can be passed along.
     // However, Finnhub and YahooFinance GET don't take a request param in their current implementation.
-    const [alpacaRes, finnhubRes, saRes, yfRes] = await Promise.allSettled([
+    const [alpacaRes, finnhubRes, saRes, yfRes, cnbcRes] = await Promise.allSettled([
       getAlpaca(request),
       getFinnhub(),
       getSeekingAlpha(request),
-      getYahooFinance()
+      getYahooFinance(),
+      getCnbc()
     ]);
 
     let allNews: NewsItem[] = [];
@@ -46,6 +48,13 @@ export async function GET(request: Request) {
       const data = await yfRes.value.json();
       if (data.data) {
         allNews = allNews.concat((data.data as NewsItem[]).map(item => ({ ...item, source: item.source || 'Yahoo Finance' })));
+      }
+    }
+
+    if (cnbcRes.status === 'fulfilled') {
+      const data = await cnbcRes.value.json();
+      if (data.data) {
+        allNews = allNews.concat((data.data as NewsItem[]).map(item => ({ ...item, source: item.source || 'CNBC' })));
       }
     }
 
